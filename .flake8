@@ -1,0 +1,7 @@
+[flake8]
+# Black will reformat *most* lines that exceed 88 chars, but we allow some leeway here e.g. for longer comments
+# or things that Black refuses to break. Nothing should exceed 119 characters though.
+max-line-length = 120
+
+# See https://github.com/PyCQA/pycodestyle/issues/373
+extend-ignore = E203

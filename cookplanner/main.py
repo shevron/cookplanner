@@ -33,16 +33,19 @@ def main(ctx, config):
 @click.pass_obj
 def print_info(obj):
     """Print some information based on config and exit"""
-    owners = schedule.get_preferred_days(obj["config"]["owners"])
-    days = obj["config"]["schedule"]["daysToPlan"]
+    owner_list = schedule.get_owner_list(obj["config"]["owners"])
+    owners = schedule.get_preferred_days(owner_list)
+    days = obj["config"]["schedule"]["weekdays_to_schedule"]
     print("Preferred weekdays:")
     for day in days:
         dc = owners.get(day, [])
-        print(f"  {day}: {', '.join((c['name'] for c in dc))}")
+        print(f"  {day}: {', '.join((c.name for c in dc))}")
     print()
 
     print(
-        "Cooking Cycle: ", schedule.get_cooking_cycle(obj["config"]["owners"], len(days))
+        "Normal task cycle: ",
+        schedule.get_normal_task_cycle(owner_list, len(days)),
+        "days",
     )
 
 
@@ -120,26 +123,33 @@ def create_schedule(
         creds, config["calendars"]["holidayCalendarIds"], end=end, start=start
     )
 
+    owners = schedule.get_owner_list(config["owners"])
     current_schedule = schedule.create_existing_schedule(
-        config["owners"],
+        owners,
         backend.get_scheduled_task_history(
-            creds, config["calendars"]["scheduleCalendarId"], history_starts_at, end=start
-        )
+            creds,
+            config["calendars"]["scheduleCalendarId"],
+            history_starts_at,
+            end=start,
+        ),
     )
 
     _log.info("Existing schedule loaded with %d scheduled tasks", len(current_schedule))
 
-    schedulers = schedule.get_schedulers(config["owners"], config["schedule"]["weekdays_to_schedule"])
+    schedulers = schedule.get_schedulers(
+        owners, config["schedule"]["weekdays_to_schedule"]
+    )
     schedule.update_schedule(
-        current_schedule, schedulers, start, end, config["schedule"]["weekdays_to_schedule"], holidays
+        current_schedule,
+        schedulers,
+        start,
+        end,
+        config["schedule"]["weekdays_to_schedule"],
+        holidays,
     )
 
     for day, scheduled_task in current_schedule:
         print(f"{day}\t=>\t{scheduled_task.owner.name}")
-        # if "holiday" in cook_info:
-        #     print(f"{day}\tHoliday: {cook_info['holiday']}")
-        # else:
-        #     print(f"{day}\t{cook_info['cook']}")
 
 
 if __name__ == "__main__":

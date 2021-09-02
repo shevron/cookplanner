@@ -8,9 +8,10 @@ import math
 import random
 from collections import defaultdict
 from datetime import datetime
-from dateutil.tz import UTC
 from math import floor
 from typing import Any, Dict, Iterable, List, MutableMapping, Optional, Tuple, Union
+
+from dateutil.tz import UTC
 
 from .sturcts import WEEKDAYS, WEEKDAYS_REV, ScheduledTask, TaskOwner
 from .utils import filter_weekdays, get_dates_in_range
@@ -45,8 +46,8 @@ class Schedule:
             date = date.strftime("%Y-%m-%d")
         return self._schedule.get(date)
 
-    def get_last_task_date(self, cook: str) -> Optional[datetime]:
-        return self._last_scheduled.get(cook)
+    def get_last_task_date(self, owner_name: str) -> Optional[datetime]:
+        return self._last_scheduled.get(owner_name)
 
     def get_total_tasks(self, cook: str) -> int:
         return self._total_tasks.get(cook, 0)
@@ -74,22 +75,16 @@ class Scheduler:
         """
         raise NotImplementedError("Must implement this")
 
-    # def _get_last_cooked(
-    #     self, cook: str, existing_schedule: Schedule
-    # ) -> Optional[datetime]:
-    #     last_cooked_historic = self.history.get_last_cook_date(cook)
-    #     last_cooked_planned = existing_schedule.get_last_cook_date(cook)
-    #     if last_cooked_historic:
-    #         if last_cooked_planned:
-    #             return max(last_cooked_historic, last_cooked_planned)
-    #         return last_cooked_historic
-    #     elif last_cooked_planned:
-    #         return last_cooked_planned
-    #     return None
+    def _update_schedule(self, schedule: Schedule, owner: TaskOwner, date: datetime):
+        task = ScheduledTask(
+            owner, date, metadata={"scheduler": self.__class__.__name__}
+        )
+        schedule.add(task)
 
 
 class PreferredDayBasedScheduler(Scheduler):
     """Primary algorithm: based on preferred day + minimal cook cycle for each cook
+
     - Calculate a global MCS (Minimal Cook Cycle)
     - Take all cooks that have set this day as their preferred day of week
     - For each cook:
@@ -102,46 +97,46 @@ class PreferredDayBasedScheduler(Scheduler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.preferred_days = get_preferred_days(self.cooks)
-        self.global_mcs = get_cooking_cycle(
-            self.cooks, 5
-        )  # FIXME: get actual count of cooking weekdays
+        self.preferred_days = get_preferred_days(self.owners)
+        self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
 
-    def schedule(self, date: datetime, existing_schedule: Schedule) -> Optional[str]:
-        cooks = self.preferred_days[WEEKDAYS_REV[date.weekday()]]
-        if not cooks:
-            return None
+    def schedule(self, date: datetime, schedule: Schedule) -> bool:
+        preferred_owners = self.preferred_days[WEEKDAYS_REV[date.weekday()]]
+        if not preferred_owners:
+            return False
 
         best_match = None
-        for last_cooked, cook in self._get_potential_cooks(
-            date, cooks, existing_schedule
+        for last_scheduled, owner in self._filter_potential_owners(
+            date, preferred_owners, schedule
         ):
             if (
                 best_match is None
                 or best_match[0] is None
-                or last_cooked is None
-                or best_match[0] > last_cooked
+                or last_scheduled is None
+                or best_match[0] > last_scheduled
             ):
-                best_match = (last_cooked, cook)
-        if best_match:
-            return best_match[1]["name"]
-        return None
+                best_match = (last_scheduled, owner)
 
-    def _get_potential_cooks(
-        self, date: datetime, cooks: List[Dict[str, Any]], existing_schedule
-    ) -> Iterable[Tuple[datetime, Dict[str, Any]]]:
-        """Get iterator for cooks that didn't cook for more than their MCS"""
-        for cook in cooks:
-            cook_mcs = self.global_mcs / cook.get("weight", 1.0)
-            last_cooked = self._get_last_cooked(cook["name"], existing_schedule)
-            if last_cooked:
-                days_since_cook = (date - last_cooked).days
-                if days_since_cook < cook_mcs:
+        if best_match:
+            self._update_schedule(schedule, best_match[1], date)
+            return True
+        return False
+
+    def _filter_potential_owners(
+        self, date: datetime, owners: List[TaskOwner], schedule: Schedule
+    ) -> Iterable[Tuple[datetime, TaskOwner]]:
+        """Get iterator for owners that weren't scheduled for more than their MCS"""
+        for owner in owners:
+            owner_mts = self.global_mts / owner.weight
+            last_scheduled = schedule.get_last_task_date(owner.name)
+            if last_scheduled:
+                days_since = (date - last_scheduled).days
+                if days_since < owner_mts:
                     _log.debug(
-                        f"Eliminating {cook['name']}, last cooked on {last_cooked}, {days_since_cook} days ago"
+                        f"Eliminating {owner.name}, last scheduled on {last_scheduled}, {days_since} days ago"
                     )
                     continue
-            yield last_cooked, cook
+            yield last_scheduled, owner
 
 
 class HistoricCooksCountScheduler(Scheduler):
@@ -157,7 +152,7 @@ class HistoricCooksCountScheduler(Scheduler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.global_mcs = get_cooking_cycle(
+        self.global_mcs = get_normal_task_cycle(
             self.cooks, 5
         )  # FIXME: get actual count of cooking weekdays
 
@@ -223,54 +218,55 @@ class HistoricCooksCountScheduler(Scheduler):
 class SomeoneRandom(Scheduler):
     def schedule(self, date: datetime, schedule: Schedule) -> bool:
         owner = random.choice(self.owners)
-        task = ScheduledTask(owner, date, metadata={
-            "scheduler": self.__class__.__name__
-        })
-        schedule.add(task)
+        self._update_schedule(schedule, owner, date)
         return True
 
 
-def get_schedulers(
-    owners_config: List[Dict[str, Any]], weekdays: List[str]
-) -> Iterable[Scheduler]:
-    owners = [TaskOwner(**o) for o in owners_config]
+def get_owner_list(owners_config: List[Dict[str, Any]]) -> List[TaskOwner]:
+    return [TaskOwner(**o) for o in owners_config]
+
+
+def get_schedulers(owners: List[TaskOwner], weekdays: List[str]) -> Iterable[Scheduler]:
     schedulers = [
-        # PreferredDayBasedScheduler(owners, weekdays),
+        PreferredDayBasedScheduler(owners, weekdays),
         # HistoricCooksCountScheduler(owners, weekdays),
         SomeoneRandom(owners, weekdays),
     ]
     return schedulers
 
 
-def get_preferred_days(config: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    """Get all cooks by their preferred days"""
+def get_preferred_days(owners: Iterable[TaskOwner]) -> Dict[str, List[TaskOwner]]:
+    """Get all owners by their preferred days"""
     days = defaultdict(list)
-    for cook in config:
-        if "preferred_day" not in cook:
-            _log.warning("Cook has no preferred day: %s", cook)
+    for owner in owners:
+        if not owner.preferred_day:
+            _log.warning("Owner has no preferred day: %s", owner.name)
             continue
-        day = cook.pop("preferred_day")
-        days[day].append(cook)
+        days[owner.preferred_day].append(owner)
     return days
 
 
-def get_cooking_cycle(cooks: List[Dict[str, Any]], cooking_days: int):
-    """Get global cooking cycle length"""
-    total_cooks = sum((cook.get("weight", 1.0) for cook in cooks))
-    return floor(total_cooks / cooking_days * 7)
+def get_normal_task_cycle(owners: List[TaskOwner], scheduled_weekdays: int):
+    """Get global normal task cycle length"""
+    total_owners = sum((owner.weight for owner in owners))
+    return floor(total_owners / scheduled_weekdays * 7)
 
 
-def create_existing_schedule(owners_config: List[Dict[str, Any]], existing: Dict[str, str]) -> Schedule:
+def create_existing_schedule(
+    owners_list: List[TaskOwner], existing: Dict[str, str]
+) -> Schedule:
     """Load date->owner key value pair list into a new Schedule object"""
-    owners = {o["name"]: TaskOwner(**o) for o in owners_config}
+    owners = {o.name: o for o in owners_list}
     schedule = Schedule()
     for date_str, owner_name in existing:
         date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=UTC)
-        schedule.add(ScheduledTask(
-            owner=owners.get(owner_name, TaskOwner(name=owner_name)),
-            date=date,
-            status="saved",
-        ))
+        schedule.add(
+            ScheduledTask(
+                owner=owners.get(owner_name, TaskOwner(name=owner_name)),
+                date=date,
+                status="saved",
+            )
+        )
     return schedule
 
 
@@ -295,7 +291,9 @@ def update_schedule(
             if day_str in holidays:
                 continue
 
-            _log.debug(f"Attempting to schedule cook for {day.strftime('%a, %Y-%m-%d')} using {scheduler}")
+            _log.debug(
+                f"Attempting to schedule cook for {day.strftime('%a, %Y-%m-%d')} using {scheduler}"
+            )
             if not scheduler.schedule(day, schedule):
                 all_scheduled = False
 

@@ -42,6 +42,9 @@ mypy:
 test:
 	$(pytest)
 
+.PHONY: static  ## Run all static code style and quality checks
+static: lint check-format mypy
+
 .PHONY: clean  ## Remove temporary and cache files/directories
 clean:
 	rm -rf `find . -name __pycache__`
