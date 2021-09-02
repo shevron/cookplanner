@@ -9,7 +9,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-from .schedule import get_dates_in_range
+from .utils import get_dates_in_range
 
 _log = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def authorize(client_secret_file: str) -> Credentials:
 def get_scheduled_task_history(
     creds: Credentials, calendar_id: str, start_at: datetime, end: Optional[datetime]
 ) -> Dict[str, str]:
-    """Get all past cooks between start_at and now"""
+    """Get all scheduled tasks in a given date range"""
     service = build("calendar", "v3", credentials=creds)
 
     if not end:

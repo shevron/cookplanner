@@ -33,16 +33,16 @@ def main(ctx, config):
 @click.pass_obj
 def print_info(obj):
     """Print some information based on config and exit"""
-    cooks = schedule.get_preferred_days(obj["config"]["cooks"])
+    owners = schedule.get_preferred_days(obj["config"]["owners"])
     days = obj["config"]["schedule"]["daysToPlan"]
     print("Preferred weekdays:")
     for day in days:
-        dc = cooks.get(day, [])
+        dc = owners.get(day, [])
         print(f"  {day}: {', '.join((c['name'] for c in dc))}")
     print()
 
     print(
-        "Cooking Cycle: ", schedule.get_cooking_cycle(obj["config"]["cooks"], len(days))
+        "Cooking Cycle: ", schedule.get_cooking_cycle(obj["config"]["owners"], len(days))
     )
 
 
@@ -100,16 +100,18 @@ def create_schedule(
 
     if history_starts_at is None:
         history_starts_at = utils.get_year_start_date(
-            config["schedule"].get("yearStart", "09-01")
+            config["schedule"].get("year_start", "09-01")
         )
     else:
         history_starts_at = history_starts_at.replace(tzinfo=dateutil.tz.UTC)
+
     if start is None:
         start = datetime.now(tz=dateutil.tz.UTC)
     else:
         start = start.replace(tzinfo=dateutil.tz.UTC)
+
     if end is None:
-        end = utils.get_year_end_date(config["schedule"].get("yearEnd", "06-30"))
+        end = utils.get_year_end_date(config["schedule"].get("year_end", "06-30"))
     else:
         end = end.replace(tzinfo=dateutil.tz.UTC)
 
@@ -117,19 +119,27 @@ def create_schedule(
     holidays = backend.get_holidays(
         creds, config["calendars"]["holidayCalendarIds"], end=end, start=start
     )
-    history = backend.get_scheduled_task_history(
-        creds, config["calendars"]["scheduleCalendarId"], history_starts_at, end=start
-    )
-    schedulers = schedule.get_schedulers(config["cooks"], history)
-    cooking_plan = schedule.create_schedule(
-        schedulers, start, end, config["schedule"]["daysToPlan"], holidays
+
+    current_schedule = schedule.create_existing_schedule(
+        config["owners"],
+        backend.get_scheduled_task_history(
+            creds, config["calendars"]["scheduleCalendarId"], history_starts_at, end=start
+        )
     )
 
-    for day, cook_info in cooking_plan.items():
-        if "holiday" in cook_info:
-            print(f"{day}\tHoliday: {cook_info['holiday']}")
-        else:
-            print(f"{day}\t{cook_info['cook']}")
+    _log.info("Existing schedule loaded with %d scheduled tasks", len(current_schedule))
+
+    schedulers = schedule.get_schedulers(config["owners"], config["schedule"]["weekdays_to_schedule"])
+    schedule.update_schedule(
+        current_schedule, schedulers, start, end, config["schedule"]["weekdays_to_schedule"], holidays
+    )
+
+    for day, scheduled_task in current_schedule:
+        print(f"{day}\t=>\t{scheduled_task.owner.name}")
+        # if "holiday" in cook_info:
+        #     print(f"{day}\tHoliday: {cook_info['holiday']}")
+        # else:
+        #     print(f"{day}\t{cook_info['cook']}")
 
 
 if __name__ == "__main__":

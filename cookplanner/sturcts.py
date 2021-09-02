@@ -19,7 +19,7 @@ class ScheduledTask:
 
     owner: TaskOwner
     date: datetime
-    status: Literal["new", "saved"] = "new"
+    status: Literal["new", "saved", "modified"] = "new"
     metadata: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     @property
