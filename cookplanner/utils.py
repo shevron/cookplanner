@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
-from dateutil.tz import UTC
 from typing import Iterable
+
+from dateutil.tz import UTC
 
 from .sturcts import WEEKDAYS
 

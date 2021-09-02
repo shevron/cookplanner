@@ -1,7 +1,7 @@
 import logging
 import os.path
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from dateutil import tz
 from google.auth.transport.requests import Request
@@ -40,7 +40,7 @@ def authorize(client_secret_file: str) -> Credentials:
     return creds
 
 
-def get_cooking_history(
+def get_scheduled_task_history(
     creds: Credentials, calendar_id: str, start_at: datetime, end: Optional[datetime]
 ) -> Dict[str, str]:
     """Get all past cooks between start_at and now"""

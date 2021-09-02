@@ -1,13 +1,12 @@
 import logging
-from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 import click
 import dateutil.tz
 import yaml
 
-from . import backend, schedule
+from . import backend, schedule, utils
 
 LOG_FORMAT = "%(asctime)-15s %(levelname)s %(message)s"
 
@@ -79,7 +78,7 @@ def get_history(obj, start, end):
     """Create schedule"""
     config = obj["config"]
     creds = backend.authorize(config["auth"]["google_client_secret_file"])
-    history = backend.get_cooking_history(
+    history = backend.get_scheduled_task_history(
         creds, config["calendars"]["scheduleCalendarId"], start, end
     )
     print(history)
@@ -100,7 +99,7 @@ def create_schedule(
     config = obj["config"]
 
     if history_starts_at is None:
-        history_starts_at = schedule.get_year_start_date(
+        history_starts_at = utils.get_year_start_date(
             config["schedule"].get("yearStart", "09-01")
         )
     else:
@@ -110,7 +109,7 @@ def create_schedule(
     else:
         start = start.replace(tzinfo=dateutil.tz.UTC)
     if end is None:
-        end = schedule.get_year_end_date(config["schedule"].get("yearEnd", "06-30"))
+        end = utils.get_year_end_date(config["schedule"].get("yearEnd", "06-30"))
     else:
         end = end.replace(tzinfo=dateutil.tz.UTC)
 
@@ -118,7 +117,7 @@ def create_schedule(
     holidays = backend.get_holidays(
         creds, config["calendars"]["holidayCalendarIds"], end=end, start=start
     )
-    history = backend.get_cooking_history(
+    history = backend.get_scheduled_task_history(
         creds, config["calendars"]["scheduleCalendarId"], history_starts_at, end=start
     )
     schedulers = schedule.get_schedulers(config["cooks"], history)
