@@ -9,7 +9,17 @@ import random
 from collections import defaultdict
 from datetime import datetime
 from math import floor
-from typing import Any, Dict, Iterable, List, MutableMapping, Optional, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    MutableMapping,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from dateutil.tz import UTC
 
@@ -25,7 +35,7 @@ class Schedule:
         self._last_scheduled: MutableMapping[str, datetime] = {}
         self._total_tasks: MutableMapping[str, int] = defaultdict(int)
 
-    def __iter__(self) -> Iterable[Tuple[str, ScheduledTask]]:
+    def __iter__(self) -> Iterator[Tuple[str, ScheduledTask]]:
         return iter(self._schedule.items())
 
     def __len__(self) -> int:
@@ -141,6 +151,7 @@ class PreferredDayBasedScheduler(Scheduler):
 
 class HistoricCooksCountScheduler(Scheduler):
     """Secondary algorithm: based on past actual cookings + distance from MCS edges
+
     - Calculate a global MCS (Minimal Cook Cycle)
     - For each cook:
       - Calculate number of past actual cookings (multiplied by weight, floored)
@@ -152,67 +163,59 @@ class HistoricCooksCountScheduler(Scheduler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.global_mcs = get_normal_task_cycle(
-            self.cooks, 5
-        )  # FIXME: get actual count of cooking weekdays
+        self.owners_by_name = {o.name: o for o in self.owners}
+        self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
 
-    def schedule(self, date: datetime, existing_schedule: Schedule) -> Optional[str]:
-        past_cookings = list(
+    def schedule(self, date: datetime, schedule: Schedule) -> bool:
+        past_ownerships = list(
             sorted(
-                (
-                    (self._get_total_past_cookings(c, existing_schedule), c)
-                    for c in self.cooks
-                ),
-                key=lambda c: (c[0], c[1]["name"]),
+                ((self._get_total_past_tasks(o, schedule), o.name) for o in self.owners)
             )
         )
-        least_cookings = past_cookings[0][0]
-        least_cooked = []
+        least_scheduled_val = past_ownerships[0][0]
+        least_scheduled = []
 
-        # Get cooks with least number of past cookings
-        for cooking in past_cookings:
-            if cooking[0] == least_cookings:
-                least_cooked.append(cooking[1])
+        # Get owners with least number of past tasks scheduled
+        for ownership in past_ownerships:
+            if ownership[0] == least_scheduled_val:
+                least_scheduled.append(ownership[1])
 
-        if len(least_cooked) == 1:
-            return least_cooked[0]["name"]
-        # We have some people who never cooked - just return the 1st one
-        elif least_cookings == 0:
-            return least_cooked[0]["name"]
-
+        if len(least_scheduled) == 1 or least_scheduled_val == 0:
+            owner = self.owners_by_name[least_scheduled[0]]
+            self._update_schedule(schedule, owner, date)
+            return True
         # This shouldn't happen
-        elif len(least_cooked) == 0:
+        elif len(least_scheduled) == 0:
             _log.warning(
-                "Didn't find any cooks with least number of cookings, this shouldn't happen"
+                "Didn't find any owners with least number of scheduled tasks, this shouldn't happen"
             )
-            return None
+            return False
 
-        # We have several cooks with the same number. Find the one farthest from cooking again
+        # We have several owner with the same number. Find the one farthest from being scheduled again
         distances = list(
             sorted(
                 (
-                    (self._get_cooking_distance(date, c, existing_schedule), c)
-                    for c in least_cooked
+                    (self._get_scheduled_distance(date, o, schedule), o)
+                    for o in least_scheduled
                 ),
-                key=lambda c: (c[0], c[1]["name"]),
             )
         )
-        return distances[0][1]["name"]
+        owner = self.owners_by_name[distances[0][1]]
+        self._update_schedule(schedule, owner, date)
+        return True
 
-    def _get_total_past_cookings(
-        self, cook: Dict[str, Any], existing_schedule: Schedule
+    def _get_scheduled_distance(
+        self, date: datetime, owner_name: str, schedule: Schedule
     ) -> int:
-        name = cook["name"]
-        cookings = existing_schedule.get_total_cookings(
-            name
-        ) + self.history.get_total_cookings(name)
-        return math.floor(cookings * cook.get("weight", 1.0))
+        owner = self.owners_by_name[owner_name]
+        pmts = self.global_mts * owner.weight
+        last_scheduled = schedule.get_last_task_date(owner_name)
+        days_since = (date - last_scheduled).days
+        return math.floor(abs(days_since - (pmts / 2)))
 
-    def _get_cooking_distance(self, date, cook: Dict[str, Any], schedule) -> int:
-        pmcs = self.global_mcs * cook.get("weight", 1.0)
-        last_cooked = self._get_last_cooked(cook["name"], schedule)
-        days_since_cook = (date - last_cooked).days
-        return math.floor(abs(days_since_cook - (pmcs / 2)))
+    @staticmethod
+    def _get_total_past_tasks(owner: TaskOwner, schedule: Schedule) -> int:
+        return math.floor(schedule.get_total_tasks(owner.name) * owner.weight)
 
 
 class SomeoneRandom(Scheduler):
@@ -229,7 +232,7 @@ def get_owner_list(owners_config: List[Dict[str, Any]]) -> List[TaskOwner]:
 def get_schedulers(owners: List[TaskOwner], weekdays: List[str]) -> Iterable[Scheduler]:
     schedulers = [
         PreferredDayBasedScheduler(owners, weekdays),
-        # HistoricCooksCountScheduler(owners, weekdays),
+        HistoricCooksCountScheduler(owners, weekdays),
         SomeoneRandom(owners, weekdays),
     ]
     return schedulers
