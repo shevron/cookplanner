@@ -7,7 +7,7 @@ import logging
 import math
 import random
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import floor
 from typing import (
     Any,
@@ -33,22 +33,24 @@ class Schedule:
     def __init__(self) -> None:
         self._schedule: MutableMapping[str, ScheduledTask] = {}
         self._last_scheduled: MutableMapping[str, datetime] = {}
+        self._first_scheduled: MutableMapping[str, datetime] = {}
         self._total_tasks: MutableMapping[str, int] = defaultdict(int)
 
     def __iter__(self) -> Iterator[Tuple[str, ScheduledTask]]:
-        return iter(self._schedule.items())
+        return iter(sorted(self._schedule.items(), key=lambda t: t[0]))
 
     def __len__(self) -> int:
         return len(self._schedule)
 
     def add(self, task: ScheduledTask) -> None:
         self._total_tasks[task.owner.name] += 1
-        if task.owner.name in self._last_scheduled:
-            self._last_scheduled[task.owner.name] = max(
-                self._last_scheduled[task.owner.name], task.date
-            )
-        else:
-            self._last_scheduled[task.owner.name] = task.date
+        date = task.date.replace(hour=0, minute=0, second=0, microsecond=0)
+        if task.owner.name not in self._last_scheduled or (self._last_scheduled[task.owner.name] < date):
+            self._last_scheduled[task.owner.name] = date
+
+        if task.owner.name not in self._first_scheduled or (self._first_scheduled[task.owner.name] > date):
+            self._first_scheduled[task.owner.name] = date
+
         self._schedule[task.date_str] = task
 
     def get(self, date: Union[datetime, str]) -> Optional[ScheduledTask]:
@@ -59,8 +61,37 @@ class Schedule:
     def get_last_task_date(self, owner_name: str) -> Optional[datetime]:
         return self._last_scheduled.get(owner_name)
 
-    def get_total_tasks(self, cook: str) -> int:
-        return self._total_tasks.get(cook, 0)
+    def get_total_tasks(self, owner_name: str) -> int:
+        return self._total_tasks.get(owner_name, 0)
+
+    def get_nearest_task_date(self, owner_name: str, date: datetime) -> Optional[datetime]:
+        """Get date of scheduled task for given owner closest to given date
+
+        TODO: Optimize?
+        """
+        if owner_name not in self._first_scheduled or owner_name not in self._last_scheduled:
+            return None
+
+        distance = 0
+        date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        while True:
+            past_date = date - timedelta(days=distance)
+            future_date = date + timedelta(days=distance)
+
+            if past_date < self._first_scheduled[owner_name] and future_date > self._last_scheduled[owner_name]:
+                return None
+
+            if past_date >= self._first_scheduled[owner_name]:
+                task = self._schedule.get(past_date.strftime("%Y-%m-%d"))
+                if task and task.owner.name == owner_name:
+                    return past_date
+
+            if future_date <= self._last_scheduled[owner_name]:
+                task = self._schedule.get(future_date.strftime("%Y-%m-%d"))
+                if task and task.owner.name == owner_name:
+                    return future_date
+
+            distance += 1
 
 
 class Scheduler:
@@ -89,6 +120,7 @@ class Scheduler:
         task = ScheduledTask(
             owner, date, metadata={"scheduler": self.__class__.__name__}
         )
+        _log.debug(f"Chose {owner.name} as owner for {task.date_str}")
         schedule.add(task)
 
 
@@ -159,12 +191,18 @@ class HistoricCooksCountScheduler(Scheduler):
     - If only one cook is picked - pick them
     - If more than one cook is picked (have the same # of past cookings), pick the cook
       with shortest distance from PMCS / 2
+
+    FIXME BUG: we strictly prefer historic task count over distance from last / next cook.
+      This probably causes that a few of the people end up having very close schedules.
+      A smarter approach might be:
+        - Pick the person with least cooks
+        - Find the best dates for them
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
         self.owners_by_name = {o.name: o for o in self.owners}
-        self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
 
     def schedule(self, date: datetime, schedule: Schedule) -> bool:
         past_ownerships = list(
@@ -177,10 +215,11 @@ class HistoricCooksCountScheduler(Scheduler):
 
         # Get owners with least number of past tasks scheduled
         for ownership in past_ownerships:
-            if ownership[0] == least_scheduled_val:
+            if ownership[0] <= least_scheduled_val + 1:
                 least_scheduled.append(ownership[1])
 
-        if len(least_scheduled) == 1 or least_scheduled_val == 0:
+        _log.debug(f"Least scheduled group size: {len(least_scheduled)}; Least scheduled value: {least_scheduled_val}")
+        if least_scheduled_val == 0:
             owner = self.owners_by_name[least_scheduled[0]]
             self._update_schedule(schedule, owner, date)
             return True
@@ -192,30 +231,43 @@ class HistoricCooksCountScheduler(Scheduler):
             return False
 
         # We have several owner with the same number. Find the one farthest from being scheduled again
+        min_distance = 7
         distances = list(
             sorted(
-                (
-                    (self._get_scheduled_distance(date, o, schedule), o)
-                    for o in least_scheduled
+                filter(
+                    lambda d: d[0] > min_distance,
+                    (
+                        (self._get_scheduled_distance(date, o, schedule), o)
+                        for o in least_scheduled
+                    )
                 ),
+                reverse=True
             )
         )
+
+        if not distances:
+            return False
+
         owner = self.owners_by_name[distances[0][1]]
         self._update_schedule(schedule, owner, date)
         return True
 
     def _get_scheduled_distance(
         self, date: datetime, owner_name: str, schedule: Schedule
-    ) -> int:
+    ) -> Union[int, str]:
+        nearest_task = schedule.get_nearest_task_date(owner_name, date)
+        if nearest_task is None:
+            _log.warning(f"Looks like {owner_name} was never scheduled...")
+            return "A"  # Hack: "A" is always sorted after integers
+
         owner = self.owners_by_name[owner_name]
-        pmts = self.global_mts * owner.weight
-        last_scheduled = schedule.get_last_task_date(owner_name)
-        days_since = (date - last_scheduled).days
-        return math.floor(abs(days_since - (pmts / 2)))
+        distance = abs((date - nearest_task).days)
+        _log.debug(f"Days to nearest scheduled task for {owner_name} from {date}: {distance}")
+        return math.floor(distance / owner.weight)
 
     @staticmethod
     def _get_total_past_tasks(owner: TaskOwner, schedule: Schedule) -> int:
-        return math.floor(schedule.get_total_tasks(owner.name) * owner.weight)
+        return math.floor(schedule.get_total_tasks(owner.name) / owner.weight)
 
 
 class SomeoneRandom(Scheduler):
@@ -232,6 +284,7 @@ def get_owner_list(owners_config: List[Dict[str, Any]]) -> List[TaskOwner]:
 def get_schedulers(owners: List[TaskOwner], weekdays: List[str]) -> Iterable[Scheduler]:
     schedulers = [
         PreferredDayBasedScheduler(owners, weekdays),
+        HistoricCooksCountScheduler(owners, weekdays),
         HistoricCooksCountScheduler(owners, weekdays),
         SomeoneRandom(owners, weekdays),
     ]

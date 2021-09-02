@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict, Counter
 from datetime import datetime
 from typing import Optional
 
@@ -91,12 +92,14 @@ def get_history(obj, start, end):
 @click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("-s", "--start", default=None, type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("-h", "--history-starts-at", type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.option("--simulate", is_flag=True, help="Simulation mode")
 @click.pass_obj
 def create_schedule(
     obj,
     start: Optional[datetime],
     end: Optional[datetime],
     history_starts_at: Optional[datetime],
+    simulate: bool = False
 ):
     """Create schedule"""
     config = obj["config"]
@@ -148,8 +151,24 @@ def create_schedule(
         holidays,
     )
 
+    sim_data = defaultdict(lambda: {"count": 0, "min_gap": None, "last_sched": None})
     for day, scheduled_task in current_schedule:
         print(f"{day}\t=>\t{scheduled_task.owner.name}")
+        if simulate:
+            owner_metrics = sim_data[scheduled_task.owner.name]
+            owner_metrics["count"] += 1
+            if owner_metrics["last_sched"]:
+                gap = abs((scheduled_task.date - owner_metrics["last_sched"]).days)
+                if owner_metrics["min_gap"] is None or gap < owner_metrics["min_gap"]:
+                    owner_metrics["min_gap"] = gap
+            owner_metrics["last_sched"] = scheduled_task.date
+
+    if simulate:
+        print("----- Simulation Results -----")
+        for owner, owner_metrics in sim_data.items():
+            print(f"{owner}:")
+            print(f"  Scheduled tasks: {owner_metrics['count']}")
+            print(f"  Minimal gap between tasks: {owner_metrics['min_gap']}")
 
 
 if __name__ == "__main__":
