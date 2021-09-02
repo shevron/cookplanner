@@ -1,0 +1,12 @@
+# IDE stuff
+/.idea
+
+# Python stuff
+/.venv*
+/.mypy_cache
+*.pyc
+
+# Should never be committed
+/config.yaml
+/google-client-secret.json
+/token.json
