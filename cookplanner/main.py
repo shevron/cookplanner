@@ -18,16 +18,16 @@ _log = logging.getLogger(__name__)
 @click.group()
 @click.option(
     "-c",
-    "--config",
+    "--config-file",
     type=click.Path(exists=True, dir_okay=False, readable=True),
     required=True,
     help="Config file path",
 )
 @click.pass_context
-def main(ctx, config):
+def main(ctx: Any, config_file: str) -> None:
     level = logging.DEBUG
     logging.basicConfig(format=LOG_FORMAT, level=level)
-    with open(config, "r") as f:
+    with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
     ctx.obj = {
@@ -38,10 +38,10 @@ def main(ctx, config):
 
 @main.command("info")
 @click.pass_obj
-def print_info(obj):
+def print_info(obj: Dict[str, Any]) -> None:
     """Print some information based on config and exit"""
-    owner_list = schedule.get_owner_list(obj["config"]["owners"])
-    owners = schedule.get_preferred_days(owner_list)
+    owner_map = schedule.get_owner_map(obj["config"]["owners"])
+    owners = schedule.get_preferred_days(owner_map.values())
     days = obj["config"]["schedule"]["weekdays_to_schedule"]
     print("Preferred weekdays:")
     for day in days:
@@ -51,14 +51,14 @@ def print_info(obj):
 
     print(
         "Normal task cycle: ",
-        schedule.get_normal_task_cycle(owner_list, len(days)),
+        schedule.get_normal_task_cycle(owner_map.values(), len(days)),
         "days",
     )
 
 
 @main.command("auth")
 @click.pass_obj
-def authorize(obj):
+def authorize(obj: Dict[str, Any]) -> None:
     """Authorize app with Google Cloud"""
     backend: GoogleCalendarBackend = obj["backend"]
     creds = backend.authorize()
@@ -70,7 +70,7 @@ def authorize(obj):
 @click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]), required=True)
 @click.option("-s", "--start", default=None, type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.pass_obj
-def get_holidays(obj, end: datetime, start: Optional[datetime]):
+def get_holidays(obj: Dict[str, Any], end: datetime, start: Optional[datetime]) -> None:
     """Get list of known holidays"""
     backend: GoogleCalendarBackend = obj["backend"]
     holidays = backend.get_holidays(end=end, start=start)
@@ -78,15 +78,25 @@ def get_holidays(obj, end: datetime, start: Optional[datetime]):
         print(date, f" - {desc}")
 
 
-@main.command("get-history")
+@main.command("list-tasks")
 @click.option("-s", "--start", type=click.DateTime(formats=["%Y-%m-%d"]), required=True)
 @click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.pass_obj
-def get_history(obj, start, end):
+def get_tasks(obj: Dict[str, Any], start: datetime, end: Optional[datetime]) -> None:
     """Create schedule"""
     backend: GoogleCalendarBackend = obj["backend"]
-    history = backend.get_scheduled_task_history(start, end)
+    history = backend.get_scheduled_tasks(start, end)
     print(history)
+
+
+@main.command("clear-tasks")
+@click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]), required=True)
+@click.option("-s", "--start", type=click.DateTime(formats=["%Y-%m-%d"]), required=True)
+@click.confirmation_option(prompt="Are you sure you want to delete tasks?")
+@click.pass_obj
+def clear_schedule(obj: Dict[str, Any], end: datetime, start: datetime) -> None:
+    backend: GoogleCalendarBackend = obj["backend"]
+    backend.clear_all_tasks(start, end)
 
 
 @main.command("schedule")
@@ -96,12 +106,12 @@ def get_history(obj, start, end):
 @click.option("--simulate", is_flag=True, help="Simulation mode")
 @click.pass_obj
 def create_schedule(
-    obj,
+    obj: Dict[str, Any],
     start: Optional[datetime],
     end: Optional[datetime],
     history_starts_at: Optional[datetime],
     simulate: bool = False,
-):
+) -> None:
     """Create schedule"""
     config = obj["config"]
     backend: GoogleCalendarBackend = obj["backend"]
@@ -128,15 +138,8 @@ def create_schedule(
     if config["schedule"].get("random_seed"):
         schedule.set_random_seed(config["schedule"]["random_seed"])
 
-    owners = schedule.get_owner_list(config["owners"])
-    current_schedule = schedule.create_existing_schedule(
-        owners,
-        backend.get_scheduled_task_history(
-            history_starts_at,
-            end=start,
-        ),
-    )
-
+    owners = schedule.get_owner_map(config["owners"])
+    current_schedule = backend.get_scheduled_tasks(history_starts_at, end, owners)
     _log.info("Existing schedule loaded with %d scheduled tasks", len(current_schedule))
 
     schedulers = schedule.get_schedulers(
@@ -154,8 +157,8 @@ def create_schedule(
     sim_data: Dict[str, Any] = defaultdict(
         lambda: {"count": 0, "min_gap": None, "last_sched": None}
     )
-    for day, scheduled_task in current_schedule:
-        print(f"{day}\t=>\t{scheduled_task.owner.name}")
+    for scheduled_task in current_schedule:
+        print(f"{scheduled_task.date_str}\t=>\t{scheduled_task.owner.name}")
         if simulate:
             owner_metrics = sim_data[scheduled_task.owner.name]
             owner_metrics["count"] += 1
@@ -173,7 +176,7 @@ def create_schedule(
             print(f"  Minimal gap between tasks: {owner_metrics['min_gap']}")
 
     else:
-        backend.save_schedule(current_schedule, config[""])
+        backend.save_schedule(current_schedule)
 
 
 if __name__ == "__main__":

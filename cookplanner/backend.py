@@ -1,15 +1,16 @@
 import logging
 import os.path
-from datetime import datetime
-from typing import Dict, Iterable, Optional
+from datetime import datetime, timedelta
+from typing import Dict, Iterable, Mapping, Optional
 
 from dateutil import tz
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
+from googleapiclient.discovery import Resource, build
 
 from .schedule import Schedule
+from .sturcts import ScheduledTask, TaskOwner
 from .utils import get_dates_in_range
 
 _log = logging.getLogger(__name__)
@@ -20,7 +21,10 @@ class GoogleCalendarBackend:
 
     For now this is the only backend we have, but maybe one day..."""
 
-    SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+    SCOPES = [
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/calendar.events",
+    ]
 
     def __init__(
         self,
@@ -61,17 +65,17 @@ class GoogleCalendarBackend:
         self._creds = creds
         return creds
 
-    def get_scheduled_task_history(
-        self, start_at: datetime, end: Optional[datetime]
-    ) -> Dict[str, str]:
+    def get_scheduled_tasks(
+        self,
+        start_at: datetime,
+        end: Optional[datetime],
+        owners: Optional[Mapping[str, TaskOwner]] = None,
+    ) -> Schedule:
         """Get all scheduled tasks in a given date range"""
-        creds = self.authorize()
-        service = build("calendar", "v3", credentials=creds)
-
         if not end:
             end = datetime.now(tz=tz.UTC)
         events = (
-            service.events()
+            self._service.events()
             .list(
                 calendarId=self._calendar_id,
                 timeMin=start_at.replace(tzinfo=tz.UTC).isoformat(),
@@ -84,18 +88,33 @@ class GoogleCalendarBackend:
             .get("items", [])
         )
 
-        history = {}
+        schedule = Schedule()
         for event in events:
+            event_props = event.get("extendedProperties", {}).get("private", {})
+            if event_props.get("generator") != "cookplanner":
+                continue
+
             start = datetime.fromisoformat(
-                event["start"].get("dateTime", event["start"].get("date"))
-            ).strftime("%Y-%m-%d")
-            if start in history:
+                event["start"].get("dateTime", event["start"].get("date")),
+            ).replace(tzinfo=tz.UTC)
+            if start.strftime("%Y-%m-%d") in schedule:
                 _log.warning("Date already recorded in cooking history: %s", start)
                 continue
 
-            history[start] = event["summary"]
+            if owners and event["summary"] in owners:
+                owner = owners[event["summary"]]
+            else:
+                owner = TaskOwner(name=event["summary"])
 
-        return history
+            task = ScheduledTask(
+                owner=owner,
+                date=start,
+                status="saved",
+                metadata={"calendar_event_id": event["id"]},
+            )
+            schedule.add(task)
+
+        return schedule
 
     def get_holidays(
         self,
@@ -103,15 +122,13 @@ class GoogleCalendarBackend:
         start: Optional[datetime] = None,
     ) -> Dict[str, str]:
         """Get list of dates which are holidays and do not require cooking"""
-        creds = self.authorize()
-        service = build("calendar", "v3", credentials=creds)
         holidays = {}
         if start is None:
             start = datetime.now(tz=tz.UTC)
 
         for calendar_id in self._holiday_calendars:
             events = (
-                service.events()
+                self._service.events()
                 .list(
                     calendarId=calendar_id,
                     timeMin=start.replace(tzinfo=tz.UTC).isoformat(),
@@ -136,6 +153,60 @@ class GoogleCalendarBackend:
 
         return holidays
 
-    def save_schedule(self, schedule: Schedule, calendar_id: str):
+    def clear_all_tasks(self, start_at: datetime, end: datetime) -> None:
+        """Clear all tasks in calendar in a given period"""
+        tasks = self.get_scheduled_tasks(start_at, end)
+        deleted = 0
+        for task in tasks:
+            task_id = task.metadata.get("calendar_event_id")
+            if task_id:
+                self._service.events().delete(
+                    calendarId=self._calendar_id, eventId=task_id
+                ).execute()
+                deleted += 1
+        _log.info("Deleted %d events from Google Calendar backend", deleted)
+
+    def save_schedule(self, schedule: Schedule) -> int:
         """Save schedule to Google Calendar"""
-        pass
+        saved = 0
+        for task in schedule:
+            if task.status in {"new", "modified"}:
+                self._save_task(task)
+                saved += 1
+        _log.info("Saved %d events to Google Calendar backend", saved)
+        return saved
+
+    def _save_task(self, task: ScheduledTask) -> None:
+        """Save a single task"""
+        event_body = {
+            "summary": task.owner.name,
+            "description": task.owner.name,
+            "extendedProperties": {"private": {"generator": "cookplanner"}},
+            "source": {
+                "title": "cookplanner",
+                "url": "https://github.com/shevron/cookplanner",
+            },
+            "start": {
+                "date": task.date_str,
+                "timezone": "UTC",
+            },
+            "end": {
+                "date": (task.date + timedelta(days=1)).strftime("%Y-%m-%d"),
+                "timezone": "UTC",
+            },
+        }
+        event = (
+            self._service.events()
+            .insert(
+                calendarId=self._calendar_id,
+                body=event_body,
+            )
+            .execute()
+        )
+
+        _log.debug("Created event: %s", event)
+
+    @property
+    def _service(self) -> Resource:
+        creds = self.authorize()
+        return build("calendar", "v3", credentials=creds)

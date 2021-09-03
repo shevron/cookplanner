@@ -15,6 +15,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Mapping,
     MutableMapping,
     Optional,
     Tuple,
@@ -36,11 +37,16 @@ class Schedule:
         self._first_scheduled: MutableMapping[str, datetime] = {}
         self._total_tasks: MutableMapping[str, int] = defaultdict(int)
 
-    def __iter__(self) -> Iterator[Tuple[str, ScheduledTask]]:
-        return iter(sorted(self._schedule.items(), key=lambda t: t[0]))
+    def __iter__(self) -> Iterator[ScheduledTask]:
+        for date_str in sorted(self._schedule.keys()):
+            yield self._schedule[date_str]
+        # return iter(sorted(self._schedule.items(), key=lambda t: t[0]))
 
     def __len__(self) -> int:
         return len(self._schedule)
+
+    def __contains__(self, item: str) -> bool:
+        return item in self._schedule
 
     def add(self, task: ScheduledTask) -> None:
         self._total_tasks[task.owner.name] += 1
@@ -108,7 +114,7 @@ class Schedule:
 
 class Scheduler:
     def __init__(
-        self, owners: List[TaskOwner], week_days: Optional[Iterable[str]] = None
+        self, owners: Mapping[str, TaskOwner], week_days: Optional[Iterable[str]] = None
     ):
         self.owners = owners
         if week_days is None:
@@ -151,10 +157,12 @@ class PreferredDayBasedScheduler(Scheduler):
     - If no cooks match the criteria, give up
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self.preferred_days = get_preferred_days(self.owners)
-        self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
+        self.preferred_days = get_preferred_days(self.owners.values())
+        self.global_mts = get_normal_task_cycle(
+            self.owners.values(), len(self.week_days)
+        )
 
     def schedule(self, date: datetime, schedule: Schedule) -> bool:
         preferred_owners = self.preferred_days[WEEKDAYS_REV[date.weekday()]]
@@ -214,15 +222,17 @@ class HistoricCooksCountScheduler(Scheduler):
         - Find the best dates for them
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         # self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
-        self.owners_by_name = {o.name: o for o in self.owners}
 
     def schedule(self, date: datetime, schedule: Schedule) -> bool:
         past_ownerships = list(
             sorted(
-                ((self._get_total_past_tasks(o, schedule), o.name) for o in self.owners)
+                (
+                    (self._get_total_past_tasks(o, schedule), o.name)
+                    for o in self.owners.values()
+                )
             )
         )
         least_scheduled_val = past_ownerships[0][0]
@@ -237,7 +247,7 @@ class HistoricCooksCountScheduler(Scheduler):
             f"Least scheduled group size: {len(least_scheduled)}; Least scheduled value: {least_scheduled_val}"
         )
         if least_scheduled_val == 0:
-            owner = self.owners_by_name[least_scheduled[0]]
+            owner = self.owners[least_scheduled[0]]
             self._update_schedule(schedule, owner, date)
             return True
         # This shouldn't happen
@@ -265,7 +275,7 @@ class HistoricCooksCountScheduler(Scheduler):
         if not distances:
             return False
 
-        owner = self.owners_by_name[distances[0][1]]
+        owner = self.owners[distances[0][1]]
         self._update_schedule(schedule, owner, date)
         return True
 
@@ -277,7 +287,7 @@ class HistoricCooksCountScheduler(Scheduler):
             _log.warning(f"Looks like {owner_name} was never scheduled...")
             return float("inf")  # infinity!
 
-        owner = self.owners_by_name[owner_name]
+        owner = self.owners[owner_name]
         distance = abs((date - nearest_task).days)
         _log.debug(
             f"Days to nearest scheduled task for {owner_name} from {date}: {distance}"
@@ -291,7 +301,7 @@ class HistoricCooksCountScheduler(Scheduler):
 
 class SomeoneRandom(Scheduler):
     def schedule(self, date: datetime, schedule: Schedule) -> bool:
-        owner = random.choice(self.owners)
+        owner = random.choice(list(self.owners.values()))
         self._update_schedule(schedule, owner, date)
         return True
 
@@ -306,11 +316,13 @@ def set_random_seed(seed: float) -> None:
     random.seed(seed)
 
 
-def get_owner_list(owners_config: List[Dict[str, Any]]) -> List[TaskOwner]:
-    return [TaskOwner(**o) for o in owners_config]
+def get_owner_map(owners_config: List[Dict[str, Any]]) -> Mapping[str, TaskOwner]:
+    return {o.name: o for v in owners_config if (o := TaskOwner(**v))}
 
 
-def get_schedulers(owners: List[TaskOwner], weekdays: List[str]) -> Iterable[Scheduler]:
+def get_schedulers(
+    owners: Mapping[str, TaskOwner], weekdays: List[str]
+) -> Iterable[Scheduler]:
     schedulers = [
         PreferredDayBasedScheduler(owners, weekdays),
         HistoricCooksCountScheduler(owners, weekdays),
@@ -330,7 +342,7 @@ def get_preferred_days(owners: Iterable[TaskOwner]) -> Dict[str, List[TaskOwner]
     return days
 
 
-def get_normal_task_cycle(owners: List[TaskOwner], scheduled_weekdays: int) -> int:
+def get_normal_task_cycle(owners: Iterable[TaskOwner], scheduled_weekdays: int) -> int:
     """Get global normal task cycle length"""
     total_owners = sum((owner.weight for owner in owners))
     return floor(total_owners / scheduled_weekdays * 7)
