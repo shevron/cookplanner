@@ -353,7 +353,7 @@ def get_schedulers(
 ) -> Iterable[Scheduler]:
     schedulers = [
         PreferredDayBasedScheduler(owners, weekdays),
-        # HistoricCooksCountScheduler(owners, weekdays),
+        HistoricCooksCountScheduler(owners, weekdays),
         # SomeoneRandom(owners, weekdays),
     ]
     return schedulers

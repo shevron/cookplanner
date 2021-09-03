@@ -8,6 +8,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import Resource, build
+from googleapiclient.errors import HttpError
 
 from .schedule import Schedule
 from .sturcts import ScheduledTask, TaskOwner
@@ -178,7 +179,10 @@ class GoogleCalendarBackend:
 
     def _save_task(self, task: ScheduledTask) -> None:
         """Save a single task"""
+        task_id = f"cookplanner{task.date.strftime('%Y%m%d')}"
+        _log.debug("Saving task %s", task_id)
         event_body = {
+            "id": task_id,
             "summary": task.owner.name,
             "description": task.owner.name,
             "extendedProperties": {"private": {"generator": "cookplanner"}},
@@ -195,14 +199,31 @@ class GoogleCalendarBackend:
                 "timezone": "UTC",
             },
         }
-        event = (
-            self._service.events()
-            .insert(
-                calendarId=self._calendar_id,
-                body=event_body,
+
+        try:
+            # Try inserting
+            event = (
+                self._service.events()
+                .insert(
+                    calendarId=self._calendar_id,
+                    body=event_body,
+                )
+                .execute()
             )
-            .execute()
-        )
+        except HttpError as e:
+            if e.status_code == 409:
+                _log.debug("Event ID already exists, updating")
+                event = (
+                    self._service.events()
+                    .update(
+                        calendarId=self._calendar_id,
+                        eventId=task_id,
+                        body=event_body,
+                    )
+                    .execute()
+                )
+            else:
+                raise
 
         _log.debug("Created event: %s", event)
 
