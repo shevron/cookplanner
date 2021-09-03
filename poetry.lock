@@ -141,18 +141,6 @@ httplib2 = ">=0.15.0,<1dev"
 uritemplate = ">=3.0.0,<4dev"
 
 [[package]]
-name = "google-api-python-client-stubs"
-version = "1.4.0"
-description = "Type stubs for google-api-python-client"
-category = "dev"
-optional = false
-python-versions = ">=3.7,<4.0"
-
-[package.dependencies]
-google-api-python-client = ">=2.19.0,<3.0.0"
-typing-extensions = ">=3.7.4.3,<4.0.0.0"
-
-[[package]]
 name = "google-auth"
 version = "2.0.2"
 description = "Google Authentication Library"
@@ -597,7 +585,7 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "ca2642e7482725a3311dab366d3e150309ccc9e0fa3981c04c30e546939765f8"
+content-hash = "30e5b5c85df5f1b65ac1b9ced62463992d13e50ad6a811e459d42c3665d55295"
 
 [metadata.files]
 atomicwrites = [
@@ -643,10 +631,6 @@ google-api-core = [
 google-api-python-client = [
     {file = "google-api-python-client-2.19.0.tar.gz", hash = "sha256:bff8bcb30e97c3d15da0e03f0894cd8c100e67c9a53d3958fe9066b6ab277c57"},
     {file = "google_api_python_client-2.19.0-py2.py3-none-any.whl", hash = "sha256:04271ac5d8bb12180921378d470619336b3334a6202bf966882147ede87e72cf"},
-]
-google-api-python-client-stubs = [
-    {file = "google-api-python-client-stubs-1.4.0.tar.gz", hash = "sha256:8d2000000b07e0b1deb5d88493a639929a73825c1cc4a9e5d26d4181dc9154bf"},
-    {file = "google_api_python_client_stubs-1.4.0-py3-none-any.whl", hash = "sha256:8b7a8d943cd7f4536bed7d311ca3750377e30a0abfc29a83eba00f6d5b96d853"},
 ]
 google-auth = [
     {file = "google-auth-2.0.2.tar.gz", hash = "sha256:104475dc4d57bbae49017aea16fffbb763204fa2d6a70f1f3cc79962c1a383a4"},

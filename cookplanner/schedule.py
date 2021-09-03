@@ -128,7 +128,9 @@ class Scheduler:
         """
         raise NotImplementedError("Must implement this")
 
-    def _update_schedule(self, schedule: Schedule, owner: TaskOwner, date: datetime):
+    def _update_schedule(
+        self, schedule: Schedule, owner: TaskOwner, date: datetime
+    ) -> None:
         task = ScheduledTask(
             owner, date, metadata={"scheduler": self.__class__.__name__}
         )
@@ -163,9 +165,10 @@ class PreferredDayBasedScheduler(Scheduler):
         for last_scheduled, owner in self._filter_potential_owners(
             date, preferred_owners, schedule
         ):
-            if (
-                best_match is None
-                or best_match[0] is None
+            if best_match is None:
+                best_match = (last_scheduled, owner)
+            elif (
+                best_match[0] is None
                 or last_scheduled is None
                 or best_match[0] > last_scheduled
             ):
@@ -178,7 +181,7 @@ class PreferredDayBasedScheduler(Scheduler):
 
     def _filter_potential_owners(
         self, date: datetime, owners: List[TaskOwner], schedule: Schedule
-    ) -> Iterable[Tuple[datetime, TaskOwner]]:
+    ) -> Iterable[Tuple[Optional[datetime], TaskOwner]]:
         """Get iterator for owners that weren't scheduled for more than their MCS"""
         for owner in owners:
             owner_mts = self.global_mts / owner.weight
@@ -268,11 +271,11 @@ class HistoricCooksCountScheduler(Scheduler):
 
     def _get_scheduled_distance(
         self, date: datetime, owner_name: str, schedule: Schedule
-    ) -> Union[int, str]:
+    ) -> Union[int, float]:
         nearest_task = schedule.get_nearest_task_date(owner_name, date)
         if nearest_task is None:
             _log.warning(f"Looks like {owner_name} was never scheduled...")
-            return "A"  # Hack: "A" is always sorted after integers
+            return float("inf")  # infinity!
 
         owner = self.owners_by_name[owner_name]
         distance = abs((date - nearest_task).days)
@@ -327,7 +330,7 @@ def get_preferred_days(owners: Iterable[TaskOwner]) -> Dict[str, List[TaskOwner]
     return days
 
 
-def get_normal_task_cycle(owners: List[TaskOwner], scheduled_weekdays: int):
+def get_normal_task_cycle(owners: List[TaskOwner], scheduled_weekdays: int) -> int:
     """Get global normal task cycle length"""
     total_owners = sum((owner.weight for owner in owners))
     return floor(total_owners / scheduled_weekdays * 7)
@@ -339,7 +342,7 @@ def create_existing_schedule(
     """Load date->owner key value pair list into a new Schedule object"""
     owners = {o.name: o for o in owners_list}
     schedule = Schedule()
-    for date_str, owner_name in existing:
+    for date_str, owner_name in existing.items():
         date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=UTC)
         schedule.add(
             ScheduledTask(

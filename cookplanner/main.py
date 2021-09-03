@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import click
 import dateutil.tz
@@ -151,7 +151,9 @@ def create_schedule(
         holidays,
     )
 
-    sim_data = defaultdict(lambda: {"count": 0, "min_gap": None, "last_sched": None})
+    sim_data: Dict[str, Any] = defaultdict(
+        lambda: {"count": 0, "min_gap": None, "last_sched": None}
+    )
     for day, scheduled_task in current_schedule:
         print(f"{day}\t=>\t{scheduled_task.owner.name}")
         if simulate:

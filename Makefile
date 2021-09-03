@@ -36,7 +36,7 @@ lint:
 
 .PHONY: mypy  ## Run mypy over the application source
 mypy:
-	$(mypy) $(source_dir) $(tests_dir)
+	$(mypy) $(source_dir)
 
 .PHONY: test  ## Run tests
 test:

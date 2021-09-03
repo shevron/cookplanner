@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Iterable
+from typing import Iterable, Optional
 
 from dateutil.tz import UTC
 
@@ -22,7 +22,7 @@ def filter_weekdays(
             yield day
 
 
-def get_year_start_date(config_date: str, year=None) -> datetime:
+def get_year_start_date(config_date: str, year: Optional[int] = None) -> datetime:
     """Get the start date of the current year"""
     if year is not None:
         return datetime.strptime(config_date, "%m-%d").replace(year=year, tzinfo=UTC)
@@ -33,7 +33,7 @@ def get_year_start_date(config_date: str, year=None) -> datetime:
     return start
 
 
-def get_year_end_date(config_date: str, year=None) -> datetime:
+def get_year_end_date(config_date: str, year: Optional[int] = None) -> datetime:
     """Get the end date of the current year"""
     if year is not None:
         return datetime.strptime(config_date, "%m-%d").replace(year=year, tzinfo=UTC)
