@@ -277,6 +277,16 @@ class SomeoneRandom(Scheduler):
         return True
 
 
+def set_random_seed(seed: float) -> None:
+    """Initialize a pre-defined random seed
+
+    This can optionally done to enforce repeatability between runs. If not
+    done, each run will yield different results if random functions are used.
+    """
+    _log.info(f"Setting random seed to {seed}")
+    random.seed(seed)
+
+
 def get_owner_list(owners_config: List[Dict[str, Any]]) -> List[TaskOwner]:
     return [TaskOwner(**o) for o in owners_config]
 
@@ -285,8 +295,7 @@ def get_schedulers(owners: List[TaskOwner], weekdays: List[str]) -> Iterable[Sch
     schedulers = [
         PreferredDayBasedScheduler(owners, weekdays),
         HistoricCooksCountScheduler(owners, weekdays),
-        HistoricCooksCountScheduler(owners, weekdays),
-        SomeoneRandom(owners, weekdays),
+        # SomeoneRandom(owners, weekdays),
     ]
     return schedulers
 

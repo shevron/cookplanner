@@ -126,6 +126,9 @@ def create_schedule(
         creds, config["calendars"]["holidayCalendarIds"], end=end, start=start
     )
 
+    if config["schedule"].get("random_seed"):
+        schedule.set_random_seed(config["schedule"]["random_seed"])
+
     owners = schedule.get_owner_list(config["owners"])
     current_schedule = schedule.create_existing_schedule(
         owners,
