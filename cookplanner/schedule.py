@@ -18,6 +18,7 @@ from typing import (
     Mapping,
     MutableMapping,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -25,7 +26,7 @@ from typing import (
 from dateutil.tz import UTC
 
 from .sturcts import WEEKDAYS, WEEKDAYS_REV, ScheduledTask, TaskOwner
-from .utils import filter_weekdays, get_dates_in_range
+from .utils import get_dates_in_range
 
 _log = logging.getLogger(__name__)
 
@@ -125,12 +126,11 @@ class Scheduler:
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}>"
 
-    def schedule(self, date: datetime, schedule: Schedule) -> bool:
-        """Schedule an owner for task on the given date and update schedule in accordance
+    def schedule(self, dates: Iterable[datetime], schedule: Schedule) -> bool:
+        """Schedule an owner for tasks on the given dates and update schedule in accordance
 
         Each implementation will do this based on it's own algorithm
-
-        A scheduler should return True if scheduling was successful, or False otherwise
+        A scheduler should return True if scheduling *all* dates was successful, or False otherwise
         """
         raise NotImplementedError("Must implement this")
 
@@ -144,7 +144,35 @@ class Scheduler:
         schedule.add(task)
 
 
-class PreferredDayBasedScheduler(Scheduler):
+class _IteratingScheduler(Scheduler):
+    """Base scheduler class for schedulers that work day by day"""
+
+    def schedule(self, dates: Iterable[datetime], schedule: Schedule) -> bool:
+        all_scheduled = True
+        for date in dates:
+            if not self._should_schedule_date(date, schedule):
+                continue
+
+            _log.debug(
+                f"Attempting to schedule cook for {date.strftime('%a, %Y-%m-%d')} using {self}"
+            )
+
+            all_scheduled = self._schedule_date(date, schedule) and all_scheduled
+
+        return all_scheduled
+
+    def _should_schedule_date(self, date: datetime, schedule: Schedule) -> bool:
+        """Decide if the scheduler should modify today's schedule;
+
+        By default, will skip days that already have been scheduled
+        """
+        return not bool(schedule.get(date))
+
+    def _schedule_date(self, date: datetime, schedule: Schedule) -> bool:
+        raise NotImplementedError("Subclasses should implmenet this")
+
+
+class PreferredDayBasedScheduler(_IteratingScheduler):
     """Primary algorithm: based on preferred day + minimal cook cycle for each cook
 
     - Calculate a global MCS (Minimal Cook Cycle)
@@ -164,7 +192,7 @@ class PreferredDayBasedScheduler(Scheduler):
             self.owners.values(), len(self.week_days)
         )
 
-    def schedule(self, date: datetime, schedule: Schedule) -> bool:
+    def _schedule_date(self, date: datetime, schedule: Schedule) -> bool:
         preferred_owners = self.preferred_days[WEEKDAYS_REV[date.weekday()]]
         if not preferred_owners:
             return False
@@ -204,7 +232,7 @@ class PreferredDayBasedScheduler(Scheduler):
             yield last_scheduled, owner
 
 
-class HistoricCooksCountScheduler(Scheduler):
+class HistoricCooksCountScheduler(_IteratingScheduler):
     """Secondary algorithm: based on past actual cookings + distance from MCS edges
 
     - Calculate a global MCS (Minimal Cook Cycle)
@@ -222,11 +250,11 @@ class HistoricCooksCountScheduler(Scheduler):
         - Find the best dates for them
     """
 
-    def __init__(self, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
-        # self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
+    # def __init__(self, *args: Any, **kwargs: Any):
+    #     super().__init__(*args, **kwargs)
+    #     self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
 
-    def schedule(self, date: datetime, schedule: Schedule) -> bool:
+    def _schedule_date(self, date: datetime, schedule: Schedule) -> bool:
         past_ownerships = list(
             sorted(
                 (
@@ -299,8 +327,8 @@ class HistoricCooksCountScheduler(Scheduler):
         return math.floor(schedule.get_total_tasks(owner.name) / owner.weight)
 
 
-class SomeoneRandom(Scheduler):
-    def schedule(self, date: datetime, schedule: Schedule) -> bool:
+class SomeoneRandom(_IteratingScheduler):
+    def _schedule_date(self, date: datetime, schedule: Schedule) -> bool:
         owner = random.choice(list(self.owners.values()))
         self._update_schedule(schedule, owner, date)
         return True
@@ -325,7 +353,7 @@ def get_schedulers(
 ) -> Iterable[Scheduler]:
     schedulers = [
         PreferredDayBasedScheduler(owners, weekdays),
-        HistoricCooksCountScheduler(owners, weekdays),
+        # HistoricCooksCountScheduler(owners, weekdays),
         # SomeoneRandom(owners, weekdays),
     ]
     return schedulers
@@ -371,33 +399,32 @@ def update_schedule(
     schedulers: Iterable[Scheduler],
     start: datetime,
     end: datetime,
-    cooking_weekdays: List[str],
+    weekdays_to_schedule: List[str],
     holidays: Dict[str, str],
 ) -> Schedule:
     """Create schedule for given period"""
-    all_scheduled = False
-
+    include_weekdays = set((WEEKDAYS[d] for d in weekdays_to_schedule))
+    exclude_dates = set(holidays.keys())
     for scheduler in schedulers:
-        all_scheduled = True
-        for day in filter_weekdays(cooking_weekdays, get_dates_in_range(start, end)):
-            if schedule.get(day):
-                continue
-
-            day_str = day.strftime("%Y-%m-%d")
-            if day_str in holidays:
-                continue
-
-            _log.debug(
-                f"Attempting to schedule cook for {day.strftime('%a, %Y-%m-%d')} using {scheduler}"
-            )
-            if not scheduler.schedule(day, schedule):
-                all_scheduled = False
-
-        if all_scheduled:
+        dates_iter = _get_dates_iter(start, end, include_weekdays, exclude_dates)
+        if scheduler.schedule(dates_iter, schedule):
             _log.info("All days in range have been scheduled, we're done")
             break
-
-    if not all_scheduled:
+    else:
         _log.warning("Didn't manage scheduling all days in range")
 
     return schedule
+
+
+def _get_dates_iter(
+    start: datetime, end: datetime, include_weekdays: Set[int], exclude_dates: Set[str]
+) -> Iterable[datetime]:
+    """Create an iterable that yields dates that should be scheduled"""
+
+    def f(d: datetime) -> bool:
+        return (
+            d.weekday() in include_weekdays
+            and d.strftime("%Y-%m-%d") not in exclude_dates
+        )
+
+    return filter(f, get_dates_in_range(start, end))

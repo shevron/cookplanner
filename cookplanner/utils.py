@@ -3,23 +3,12 @@ from typing import Iterable, Optional
 
 from dateutil.tz import UTC
 
-from .sturcts import WEEKDAYS
-
 
 def get_dates_in_range(start: datetime, end: datetime) -> Iterable[datetime]:
     day = start
     while day < end:
         yield day
         day = day + timedelta(days=1)
-
-
-def filter_weekdays(
-    days: Iterable[str], date_range: Iterable[datetime]
-) -> Iterable[datetime]:
-    selected_weekdays = set((WEEKDAYS[d] for d in days))
-    for day in date_range:
-        if day.weekday() in selected_weekdays:
-            yield day
 
 
 def get_year_start_date(config_date: str, year: Optional[int] = None) -> datetime:
