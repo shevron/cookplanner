@@ -12,6 +12,13 @@ solve a very specific problem:
 Given these assumptions, Cookplanner will build a schedule for performing the task in a given
 date range (e.g. for the next year), and will manage an online Google Calendar describing this schedule.
 
+## Installation
+You need Python 3.8 or newer, and `poetry`. 
+
+* TODO: installing
+
+* TODO: configuration
+
 ## Why?
 Cookplanner was written to manage the cooking schedule of parents in the communal kindergarten where 
 I live. Each day, a different parent has to cook, and the preference is to stick to more or less constant
