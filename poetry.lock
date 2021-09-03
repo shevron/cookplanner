@@ -141,6 +141,18 @@ httplib2 = ">=0.15.0,<1dev"
 uritemplate = ">=3.0.0,<4dev"
 
 [[package]]
+name = "google-api-python-client-stubs"
+version = "1.4.0"
+description = "Type stubs for google-api-python-client"
+category = "dev"
+optional = false
+python-versions = ">=3.7,<4.0"
+
+[package.dependencies]
+google-api-python-client = ">=2.19.0,<3.0.0"
+typing-extensions = ">=3.7.4.3,<4.0.0.0"
+
+[[package]]
 name = "google-auth"
 version = "2.0.2"
 description = "Google Authentication Library"
@@ -538,6 +550,22 @@ optional = false
 python-versions = ">=3.6"
 
 [[package]]
+name = "types-python-dateutil"
+version = "2.8.0"
+description = "Typing stubs for python-dateutil"
+category = "dev"
+optional = false
+python-versions = "*"
+
+[[package]]
+name = "types-pyyaml"
+version = "5.4.10"
+description = "Typing stubs for PyYAML"
+category = "dev"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "typing-extensions"
 version = "3.10.0.2"
 description = "Backported and Experimental Type Hints for Python 3.5+"
@@ -569,7 +597,7 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "a34c9886dfff009a87ce3db12788cb7c3df20d67036df8e3d718d7f946dd0ac3"
+content-hash = "ca2642e7482725a3311dab366d3e150309ccc9e0fa3981c04c30e546939765f8"
 
 [metadata.files]
 atomicwrites = [
@@ -615,6 +643,10 @@ google-api-core = [
 google-api-python-client = [
     {file = "google-api-python-client-2.19.0.tar.gz", hash = "sha256:bff8bcb30e97c3d15da0e03f0894cd8c100e67c9a53d3958fe9066b6ab277c57"},
     {file = "google_api_python_client-2.19.0-py2.py3-none-any.whl", hash = "sha256:04271ac5d8bb12180921378d470619336b3334a6202bf966882147ede87e72cf"},
+]
+google-api-python-client-stubs = [
+    {file = "google-api-python-client-stubs-1.4.0.tar.gz", hash = "sha256:8d2000000b07e0b1deb5d88493a639929a73825c1cc4a9e5d26d4181dc9154bf"},
+    {file = "google_api_python_client_stubs-1.4.0-py3-none-any.whl", hash = "sha256:8b7a8d943cd7f4536bed7d311ca3750377e30a0abfc29a83eba00f6d5b96d853"},
 ]
 google-auth = [
     {file = "google-auth-2.0.2.tar.gz", hash = "sha256:104475dc4d57bbae49017aea16fffbb763204fa2d6a70f1f3cc79962c1a383a4"},
@@ -892,6 +924,14 @@ toml = [
 tomli = [
     {file = "tomli-1.2.1-py3-none-any.whl", hash = "sha256:8dd0e9524d6f386271a36b41dbf6c57d8e32fd96fd22b6584679dc569d20899f"},
     {file = "tomli-1.2.1.tar.gz", hash = "sha256:a5b75cb6f3968abb47af1b40c1819dc519ea82bcc065776a866e8d74c5ca9442"},
+]
+types-python-dateutil = [
+    {file = "types-python-dateutil-2.8.0.tar.gz", hash = "sha256:540c6c53c3a52433d7088254e3afdc3f6c86b5ae452aaa1b796c26d01c9fd73c"},
+    {file = "types_python_dateutil-2.8.0-py3-none-any.whl", hash = "sha256:9954d87dc982344bb2aad73a7fe505bdca72f89088ef653c4c40f52649183437"},
+]
+types-pyyaml = [
+    {file = "types-PyYAML-5.4.10.tar.gz", hash = "sha256:1d9e431e9f1f78a65ea957c558535a3b15ad67ea4912bce48a6c1b613dcf81ad"},
+    {file = "types_PyYAML-5.4.10-py3-none-any.whl", hash = "sha256:f1d1357168988e45fa20c65aecb3911462246a84809015dd889ebf8b1db74124"},
 ]
 typing-extensions = [
     {file = "typing_extensions-3.10.0.2-py2-none-any.whl", hash = "sha256:d8226d10bc02a29bcc81df19a26e56a9647f8b0a6d4a83924139f4a8b01f17b7"},
