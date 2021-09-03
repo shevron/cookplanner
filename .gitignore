@@ -9,4 +9,4 @@
 # Should never be committed
 /config.yaml
 /google-client-secret.json
-/token.json
+/gc-token.json

@@ -45,10 +45,14 @@ class Schedule:
     def add(self, task: ScheduledTask) -> None:
         self._total_tasks[task.owner.name] += 1
         date = task.date.replace(hour=0, minute=0, second=0, microsecond=0)
-        if task.owner.name not in self._last_scheduled or (self._last_scheduled[task.owner.name] < date):
+        if task.owner.name not in self._last_scheduled or (
+            self._last_scheduled[task.owner.name] < date
+        ):
             self._last_scheduled[task.owner.name] = date
 
-        if task.owner.name not in self._first_scheduled or (self._first_scheduled[task.owner.name] > date):
+        if task.owner.name not in self._first_scheduled or (
+            self._first_scheduled[task.owner.name] > date
+        ):
             self._first_scheduled[task.owner.name] = date
 
         self._schedule[task.date_str] = task
@@ -64,12 +68,17 @@ class Schedule:
     def get_total_tasks(self, owner_name: str) -> int:
         return self._total_tasks.get(owner_name, 0)
 
-    def get_nearest_task_date(self, owner_name: str, date: datetime) -> Optional[datetime]:
+    def get_nearest_task_date(
+        self, owner_name: str, date: datetime
+    ) -> Optional[datetime]:
         """Get date of scheduled task for given owner closest to given date
 
         TODO: Optimize?
         """
-        if owner_name not in self._first_scheduled or owner_name not in self._last_scheduled:
+        if (
+            owner_name not in self._first_scheduled
+            or owner_name not in self._last_scheduled
+        ):
             return None
 
         distance = 0
@@ -78,7 +87,10 @@ class Schedule:
             past_date = date - timedelta(days=distance)
             future_date = date + timedelta(days=distance)
 
-            if past_date < self._first_scheduled[owner_name] and future_date > self._last_scheduled[owner_name]:
+            if (
+                past_date < self._first_scheduled[owner_name]
+                and future_date > self._last_scheduled[owner_name]
+            ):
                 return None
 
             if past_date >= self._first_scheduled[owner_name]:
@@ -218,7 +230,9 @@ class HistoricCooksCountScheduler(Scheduler):
             if ownership[0] <= least_scheduled_val + 1:
                 least_scheduled.append(ownership[1])
 
-        _log.debug(f"Least scheduled group size: {len(least_scheduled)}; Least scheduled value: {least_scheduled_val}")
+        _log.debug(
+            f"Least scheduled group size: {len(least_scheduled)}; Least scheduled value: {least_scheduled_val}"
+        )
         if least_scheduled_val == 0:
             owner = self.owners_by_name[least_scheduled[0]]
             self._update_schedule(schedule, owner, date)
@@ -239,9 +253,9 @@ class HistoricCooksCountScheduler(Scheduler):
                     (
                         (self._get_scheduled_distance(date, o, schedule), o)
                         for o in least_scheduled
-                    )
+                    ),
                 ),
-                reverse=True
+                reverse=True,
             )
         )
 
@@ -262,7 +276,9 @@ class HistoricCooksCountScheduler(Scheduler):
 
         owner = self.owners_by_name[owner_name]
         distance = abs((date - nearest_task).days)
-        _log.debug(f"Days to nearest scheduled task for {owner_name} from {date}: {distance}")
+        _log.debug(
+            f"Days to nearest scheduled task for {owner_name} from {date}: {distance}"
+        )
         return math.floor(distance / owner.weight)
 
     @staticmethod

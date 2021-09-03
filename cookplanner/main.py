@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict, Counter
+from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
@@ -7,7 +7,8 @@ import click
 import dateutil.tz
 import yaml
 
-from . import backend, schedule, utils
+from . import schedule, utils
+from .backend import GoogleCalendarBackend
 
 LOG_FORMAT = "%(asctime)-15s %(levelname)s %(message)s"
 
@@ -27,7 +28,12 @@ def main(ctx, config):
     level = logging.DEBUG
     logging.basicConfig(format=LOG_FORMAT, level=level)
     with open(config, "r") as f:
-        ctx.obj = {"config": yaml.safe_load(f)}
+        config = yaml.safe_load(f)
+
+    ctx.obj = {
+        "config": config,
+        "backend": GoogleCalendarBackend(**config["backend"]["google_calendar"]),
+    }
 
 
 @main.command("info")
@@ -54,7 +60,8 @@ def print_info(obj):
 @click.pass_obj
 def authorize(obj):
     """Authorize app with Google Cloud"""
-    creds = backend.authorize(obj["config"]["auth"]["google_client_secret_file"])
+    backend: GoogleCalendarBackend = obj["backend"]
+    creds = backend.authorize()
     if creds:
         print("You have authorized the app access to your calendars")
 
@@ -65,11 +72,8 @@ def authorize(obj):
 @click.pass_obj
 def get_holidays(obj, end: datetime, start: Optional[datetime]):
     """Get list of known holidays"""
-    config = obj["config"]
-    creds = backend.authorize(config["auth"]["google_client_secret_file"])
-    holidays = backend.get_holidays(
-        creds, config["calendars"]["holidayCalendarIds"], end=end, start=start
-    )
+    backend: GoogleCalendarBackend = obj["backend"]
+    holidays = backend.get_holidays(end=end, start=start)
     for date, desc in holidays.items():
         print(date, f" - {desc}")
 
@@ -80,11 +84,8 @@ def get_holidays(obj, end: datetime, start: Optional[datetime]):
 @click.pass_obj
 def get_history(obj, start, end):
     """Create schedule"""
-    config = obj["config"]
-    creds = backend.authorize(config["auth"]["google_client_secret_file"])
-    history = backend.get_scheduled_task_history(
-        creds, config["calendars"]["scheduleCalendarId"], start, end
-    )
+    backend: GoogleCalendarBackend = obj["backend"]
+    history = backend.get_scheduled_task_history(start, end)
     print(history)
 
 
@@ -99,10 +100,11 @@ def create_schedule(
     start: Optional[datetime],
     end: Optional[datetime],
     history_starts_at: Optional[datetime],
-    simulate: bool = False
+    simulate: bool = False,
 ):
     """Create schedule"""
     config = obj["config"]
+    backend: GoogleCalendarBackend = obj["backend"]
 
     if history_starts_at is None:
         history_starts_at = utils.get_year_start_date(
@@ -121,10 +123,7 @@ def create_schedule(
     else:
         end = end.replace(tzinfo=dateutil.tz.UTC)
 
-    creds = backend.authorize(config["auth"]["google_client_secret_file"])
-    holidays = backend.get_holidays(
-        creds, config["calendars"]["holidayCalendarIds"], end=end, start=start
-    )
+    holidays = backend.get_holidays(end=end, start=start)
 
     if config["schedule"].get("random_seed"):
         schedule.set_random_seed(config["schedule"]["random_seed"])
@@ -133,8 +132,6 @@ def create_schedule(
     current_schedule = schedule.create_existing_schedule(
         owners,
         backend.get_scheduled_task_history(
-            creds,
-            config["calendars"]["scheduleCalendarId"],
             history_starts_at,
             end=start,
         ),
@@ -172,6 +169,9 @@ def create_schedule(
             print(f"{owner}:")
             print(f"  Scheduled tasks: {owner_metrics['count']}")
             print(f"  Minimal gap between tasks: {owner_metrics['min_gap']}")
+
+    else:
+        backend.save_schedule(current_schedule, config[""])
 
 
 if __name__ == "__main__":
