@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -158,7 +158,7 @@ def create_schedule(
     )
 
     sim_data: Dict[str, Any] = defaultdict(
-        lambda: {"count": 0, "min_gap": None, "last_sched": None}
+        lambda: {"count": 0, "min_gap": None, "last_sched": None, "sched": []}
     )
     for scheduled_task in current_schedule:
         print(f"{scheduled_task.date_str}\t=>\t{scheduled_task.owner.name}")
@@ -170,13 +170,20 @@ def create_schedule(
                 if owner_metrics["min_gap"] is None or gap < owner_metrics["min_gap"]:
                     owner_metrics["min_gap"] = gap
             owner_metrics["last_sched"] = scheduled_task.date
+            owner_metrics["sched"].append(scheduled_task.date)
 
     if simulate:
         print("----- Simulation Results -----")
         for owner, owner_metrics in sim_data.items():
+            weekdays = Counter([d.strftime("%a") for d in owner_metrics["sched"]])
+            scheduled_on = ", ".join(
+                [d.strftime("%Y-%m-%d") for d in owner_metrics["sched"]]
+            )
             print(f"{owner}:")
             print(f"  Scheduled tasks: {owner_metrics['count']}")
             print(f"  Minimal gap between tasks: {owner_metrics['min_gap']}")
+            print(f"  Weekdays: {weekdays}")
+            print(f"  Scheduled on: {scheduled_on}")
 
     else:
         backend.save_schedule(current_schedule)

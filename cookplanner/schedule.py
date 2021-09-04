@@ -266,7 +266,7 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
 
         # Get owners with least number of past tasks scheduled
         for ownership in past_ownerships:
-            if ownership[0] <= least_scheduled_val + 1:
+            if ownership[0] <= least_scheduled_val:
                 least_scheduled.append(ownership[1])
 
         _log.debug(
@@ -288,7 +288,7 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
         distances = list(
             sorted(
                 filter(
-                    lambda d: d[0] > min_distance,
+                    lambda d: d[0] >= min_distance,
                     (
                         (self._get_scheduled_distance(date, o, schedule), o)
                         for o in least_scheduled
@@ -318,7 +318,7 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
         _log.debug(
             f"Days to nearest scheduled task for {owner_name} from {date}: {distance}"
         )
-        return math.floor(distance / owner.weight)
+        return math.ceil(distance / owner.weight)
 
     @staticmethod
     def _get_total_past_tasks(owner: TaskOwner, schedule: Schedule) -> int:
@@ -409,6 +409,7 @@ def update_schedule(
     """Create schedule for given period"""
     exclude_dates = set(holidays.keys())
     for scheduler in schedulers:
+        _log.info("Starting to schedule tasks using %s", scheduler)
         dates_iter = _get_dates_iter(start, end, weekdays_to_schedule, exclude_dates)
         if scheduler.schedule(dates_iter, schedule):
             _log.info("All days in range have been scheduled, we're done")
