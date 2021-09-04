@@ -99,6 +99,27 @@ def clear_schedule(obj: Dict[str, Any], end: datetime, start: datetime) -> None:
     backend.clear_all_tasks(start, end)
 
 
+@main.command("set-owner")
+@click.option("-d", "--date", type=click.DateTime(formats=["%Y-%m-%d"]), required=True)
+@click.option("-o", "--owner", type=str, required=True, help="Owner name")
+@click.confirmation_option(
+    prompt="Are you sure you want to manually set owner for this date?"
+)
+@click.pass_obj
+def set_owner(obj: Dict[str, Any], date: datetime, owner: str) -> None:
+    """Manually set owner for a specific date"""
+    config = obj["config"]
+    backend: GoogleCalendarBackend = obj["backend"]
+    owners = schedule.get_owner_map(config["owners"])
+    if owner not in owners:
+        raise click.ClickException(f"Unknown owner: {owner}")
+
+    sched = schedule.create_schedule(
+        owners, {date.strftime("%Y-%m-%d"): owner}, status="new"
+    )
+    backend.save_schedule(sched)
+
+
 @main.command("schedule")
 @click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("-s", "--start", default=None, type=click.DateTime(formats=["%Y-%m-%d"]))

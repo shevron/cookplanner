@@ -25,7 +25,7 @@ from typing import (
 
 from dateutil.tz import UTC
 
-from .sturcts import WEEKDAYS, WEEKDAYS_REV, ScheduledTask, TaskOwner
+from .sturcts import WEEKDAYS, WEEKDAYS_REV, ScheduledTask, TaskOwner, TaskStatus
 from .utils import get_dates_in_range
 
 _log = logging.getLogger(__name__)
@@ -380,11 +380,12 @@ def get_normal_task_cycle(owners: Iterable[TaskOwner], scheduled_weekdays: int) 
     return floor(total_owners / scheduled_weekdays * 7)
 
 
-def create_existing_schedule(
-    owners_list: List[TaskOwner], existing: Dict[str, str]
+def create_schedule(
+    owners: Mapping[str, TaskOwner],
+    existing: Dict[str, str],
+    status: TaskStatus = "saved",
 ) -> Schedule:
     """Load date->owner key value pair list into a new Schedule object"""
-    owners = {o.name: o for o in owners_list}
     schedule = Schedule()
     for date_str, owner_name in existing.items():
         date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=UTC)
@@ -392,7 +393,8 @@ def create_existing_schedule(
             ScheduledTask(
                 owner=owners.get(owner_name, TaskOwner(name=owner_name)),
                 date=date,
-                status="saved",
+                status=status,
+                metadata={"scheduler": "manual"},
             )
         )
     return schedule
