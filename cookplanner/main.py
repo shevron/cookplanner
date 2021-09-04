@@ -138,7 +138,10 @@ def create_schedule(
     if config["schedule"].get("random_seed"):
         schedule.set_random_seed(config["schedule"]["random_seed"])
 
-    owners = schedule.get_owner_map(config["owners"])
+    owners = schedule.get_owner_map(
+        config["owners"],
+        randomize=config["schedule"].get("randomize_owners_list", False),
+    )
     current_schedule = backend.get_scheduled_tasks(history_starts_at, end, owners)
     _log.info("Existing schedule loaded with %d scheduled tasks", len(current_schedule))
 

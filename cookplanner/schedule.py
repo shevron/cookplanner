@@ -344,7 +344,13 @@ def set_random_seed(seed: float) -> None:
     random.seed(seed)
 
 
-def get_owner_map(owners_config: List[Dict[str, Any]]) -> Mapping[str, TaskOwner]:
+def get_owner_map(
+    owners_config: List[Dict[str, Any]], randomize: bool = False
+) -> Mapping[str, TaskOwner]:
+    if randomize:
+        _log.info("Randomizing owner map")
+        owners_config = list(owners_config)
+        random.shuffle(owners_config)
     return {o.name: o for v in owners_config if (o := TaskOwner(**v))}
 
 
