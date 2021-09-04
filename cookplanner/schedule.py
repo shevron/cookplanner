@@ -409,10 +409,9 @@ def update_schedule(
     holidays: Dict[str, str],
 ) -> Schedule:
     """Create schedule for given period"""
-    include_weekdays = set((WEEKDAYS[d] for d in weekdays_to_schedule))
     exclude_dates = set(holidays.keys())
     for scheduler in schedulers:
-        dates_iter = _get_dates_iter(start, end, include_weekdays, exclude_dates)
+        dates_iter = _get_dates_iter(start, end, weekdays_to_schedule, exclude_dates)
         if scheduler.schedule(dates_iter, schedule):
             _log.info("All days in range have been scheduled, we're done")
             break
@@ -423,13 +422,17 @@ def update_schedule(
 
 
 def _get_dates_iter(
-    start: datetime, end: datetime, include_weekdays: Set[int], exclude_dates: Set[str]
+    start: datetime,
+    end: datetime,
+    include_weekdays: Iterable[str],
+    exclude_dates: Set[str],
 ) -> Iterable[datetime]:
     """Create an iterable that yields dates that should be scheduled"""
+    include_weekdays = set(include_weekdays)
 
     def f(d: datetime) -> bool:
         return (
-            d.weekday() in include_weekdays
+            WEEKDAYS_REV[d.weekday()] in include_weekdays
             and d.strftime("%Y-%m-%d") not in exclude_dates
         )
 

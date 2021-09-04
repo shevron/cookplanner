@@ -5,8 +5,9 @@ from dateutil.tz import UTC
 
 
 def get_dates_in_range(start: datetime, end: datetime) -> Iterable[datetime]:
-    day = start
-    while day < end:
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = end.replace(hour=23, minute=59, second=59, microsecond=999999)
+    while day <= end:
         yield day
         day = day + timedelta(days=1)
 

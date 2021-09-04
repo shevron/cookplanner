@@ -149,7 +149,8 @@ class GoogleCalendarBackend:
                 end = datetime.fromisoformat(
                     event["end"].get("dateTime", event["end"].get("date"))
                 )
-                for date in get_dates_in_range(start, end):
+                # Google Calendar end time is exclusive, we need it inclusive
+                for date in get_dates_in_range(start, end - timedelta(days=1)):
                     holidays[date.strftime("%Y-%m-%d")] = event["summary"]
 
         return holidays

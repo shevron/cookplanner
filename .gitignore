@@ -4,6 +4,7 @@
 # Python stuff
 /.venv*
 /.mypy_cache
+/.pytest_cache
 *.pyc
 
 # Should never be committed
