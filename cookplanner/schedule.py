@@ -197,16 +197,14 @@ class PreferredDayBasedScheduler(_IteratingScheduler):
         if not preferred_owners:
             return False
 
-        best_match = None
+        best_match: Optional[Tuple[Optional[datetime], TaskOwner]] = None
         for last_scheduled, owner in self._filter_potential_owners(
             date, preferred_owners, schedule
         ):
-            if best_match is None:
-                best_match = (last_scheduled, owner)
-            elif (
-                best_match[0] is None
+            if (
+                best_match is None
                 or last_scheduled is None
-                or best_match[0] > last_scheduled
+                or (best_match[0] is not None and best_match[0] > last_scheduled)
             ):
                 best_match = (last_scheduled, owner)
 
