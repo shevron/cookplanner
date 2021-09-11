@@ -1,6 +1,6 @@
 import dataclasses
 from datetime import datetime
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Set
 
 WEEKDAYS = {"Sun": 6, "Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5}
 WEEKDAYS_REV = {v: k for k, v in WEEKDAYS.items()}
@@ -12,6 +12,7 @@ TaskStatus = Literal["new", "saved", "modified"]
 class TaskOwner:
     name: str
     preferred_day: Optional[str] = None
+    blocked_days: Set[str] = dataclasses.field(default_factory=set)
     weight: float = 1.0
 
     def __str__(self) -> str:

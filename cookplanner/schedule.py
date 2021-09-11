@@ -79,8 +79,6 @@ class Schedule:
         self, owner_name: str, date: datetime
     ) -> Optional[datetime]:
         """Get date of scheduled task for given owner closest to given date
-
-        TODO: Optimize?
         """
         if (
             owner_name not in self._first_scheduled
@@ -253,11 +251,24 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
     #     self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
 
     def _schedule_date(self, date: datetime, schedule: Schedule) -> bool:
+        blocked_weekday = {
+            o.name
+            for o in self.owners.values()
+            if WEEKDAYS_REV[date.weekday()] in o.blocked_days
+        }
+        if blocked_weekday:
+            _log.debug(
+                "Owners that have %s blocked so are eliminated: %s",
+                WEEKDAYS_REV[date.weekday()],
+                blocked_weekday,
+            )
+
         past_ownerships = list(
             sorted(
                 (
                     (self._get_total_past_tasks(o, schedule), o.name)
                     for o in self.owners.values()
+                    if o.name not in blocked_weekday
                 )
             )
         )
@@ -272,6 +283,7 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
         _log.debug(
             f"Least scheduled group size: {len(least_scheduled)}; Least scheduled value: {least_scheduled_val}"
         )
+
         if least_scheduled_val == 0:
             owner = self.owners[least_scheduled[0]]
             self._update_schedule(schedule, owner, date)
@@ -349,7 +361,18 @@ def get_owner_map(
         _log.info("Randomizing owner map")
         owners_config = list(owners_config)
         random.shuffle(owners_config)
-    return {o.name: o for v in owners_config if (o := TaskOwner(**v))}
+    return {
+        o.name: o
+        for v in owners_config
+        if (
+            o := TaskOwner(
+                name=v["name"],
+                preferred_day=v.get("preferred_day"),
+                blocked_days=set(v.get("blocked_days", [])),
+                weight=v.get("weight", 1.0),
+            )
+        )
+    }
 
 
 def get_schedulers(
