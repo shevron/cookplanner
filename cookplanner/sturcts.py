@@ -10,10 +10,12 @@ TaskStatus = Literal["new", "saved", "modified"]
 
 @dataclasses.dataclass
 class TaskOwner:
+    id: str
     name: str
     preferred_day: Optional[str] = None
     blocked_days: Set[str] = dataclasses.field(default_factory=set)
     weight: float = 1.0
+    active: bool = True
 
     def __str__(self) -> str:
         return self.name

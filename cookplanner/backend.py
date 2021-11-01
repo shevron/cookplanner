@@ -102,10 +102,15 @@ class GoogleCalendarBackend:
                 _log.warning("Date already recorded in cooking history: %s", start)
                 continue
 
-            if owners and event["summary"] in owners:
-                owner = owners[event["summary"]]
+            owner_id = event_props.get("owner_id", event["summary"])
+            if owners and owner_id in owners:
+                owner = owners[owner_id]
             else:
-                owner = TaskOwner(name=event["summary"])
+                owner = TaskOwner(
+                    id=owner_id,
+                    name=event["summary"],
+                    active=False,
+                )
 
             task = ScheduledTask(
                 owner=owner,
@@ -186,7 +191,7 @@ class GoogleCalendarBackend:
             "id": task_id,
             "summary": task.owner.name,
             "description": task.owner.name,
-            "extendedProperties": {"private": {"generator": "cookplanner"}},
+            "extendedProperties": {"private": {"generator": "cookplanner", "owner_id": task.owner.id}},
             "source": {
                 "title": "cookplanner",
                 "url": "https://github.com/shevron/cookplanner",

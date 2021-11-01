@@ -115,7 +115,7 @@ class Scheduler:
     def __init__(
         self, owners: Mapping[str, TaskOwner], week_days: Optional[Iterable[str]] = None
     ):
-        self.owners = owners
+        self.owners = {k: o for k, o in owners.items() if o.active}
         if week_days is None:
             self.week_days = set(WEEKDAYS.keys())
         else:
@@ -246,6 +246,9 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
         - Find the best dates for them
     """
 
+    LEAST_SCHEDULED_GROUP_TOLERANCE = 1
+    MIN_SCHEDULE_DISTANCE = 5
+
     # def __init__(self, *args: Any, **kwargs: Any):
     #     super().__init__(*args, **kwargs)
     #     self.global_mts = get_normal_task_cycle(self.owners, len(self.week_days))
@@ -277,7 +280,7 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
 
         # Get owners with least number of past tasks scheduled
         for ownership in past_ownerships:
-            if ownership[0] <= least_scheduled_val:
+            if ownership[0] <= least_scheduled_val + self.LEAST_SCHEDULED_GROUP_TOLERANCE:
                 least_scheduled.append(ownership[1])
 
         _log.debug(
@@ -296,11 +299,10 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
             return False
 
         # We have several owner with the same number. Find the one farthest from being scheduled again
-        min_distance = 7
         distances = list(
             sorted(
                 filter(
-                    lambda d: d[0] >= min_distance,
+                    lambda d: d[0] >= self.MIN_SCHEDULE_DISTANCE,
                     (
                         (self._get_scheduled_distance(date, o, schedule), o)
                         for o in least_scheduled
@@ -362,14 +364,16 @@ def get_owner_map(
         owners_config = list(owners_config)
         random.shuffle(owners_config)
     return {
-        o.name: o
+        o.id: o
         for v in owners_config
         if (
             o := TaskOwner(
+                id=str(v.get("id", v["name"])),
                 name=v["name"],
                 preferred_day=v.get("preferred_day"),
                 blocked_days=set(v.get("blocked_days", [])),
                 weight=v.get("weight", 1.0),
+                active=v.get("active", True),
             )
         )
     }
@@ -410,11 +414,11 @@ def create_schedule(
 ) -> Schedule:
     """Load date->owner key value pair list into a new Schedule object"""
     schedule = Schedule()
-    for date_str, owner_name in existing.items():
+    for date_str, owner_id in existing.items():
         date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=UTC)
         schedule.add(
             ScheduledTask(
-                owner=owners.get(owner_name, TaskOwner(name=owner_name)),
+                owner=owners[owner_id],
                 date=date,
                 status=status,
                 metadata={"scheduler": "manual"},

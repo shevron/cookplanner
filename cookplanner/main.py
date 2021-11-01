@@ -83,7 +83,7 @@ def get_holidays(obj: Dict[str, Any], end: datetime, start: Optional[datetime]) 
 @click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.pass_obj
 def get_tasks(obj: Dict[str, Any], start: datetime, end: Optional[datetime]) -> None:
-    """Create schedule"""
+    """List current scheduled tasks"""
     backend: GoogleCalendarBackend = obj["backend"]
     history = backend.get_scheduled_tasks(start, end)
     print(history)
@@ -118,6 +118,38 @@ def set_owner(obj: Dict[str, Any], date: datetime, owner: str) -> None:
         owners, {date.strftime("%Y-%m-%d"): owner}, status="new"
     )
     backend.save_schedule(sched)
+
+
+@main.command("update-names")
+@click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.option("-s", "--start", default=None, type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.pass_obj
+def update_names(
+    obj: Dict[str, Any],
+    start: Optional[datetime],
+    end: Optional[datetime],
+) -> None:
+    config = obj["config"]
+    backend: GoogleCalendarBackend = obj["backend"]
+
+    if start is None:
+        start = datetime.now(tz=dateutil.tz.UTC)
+    else:
+        start = start.replace(tzinfo=dateutil.tz.UTC)
+
+    if end is None:
+        end = utils.get_year_end_date(config["schedule"].get("year_end", "06-30"))
+    else:
+        end = end.replace(tzinfo=dateutil.tz.UTC)
+
+    owners = schedule.get_owner_map(config["owners"])
+    current_schedule = backend.get_scheduled_tasks(start, end, owners)
+    _log.info("Existing schedule loaded with %d scheduled tasks", len(current_schedule))
+
+    for task in current_schedule:
+        task.status = 'modified'
+
+    backend.save_schedule(current_schedule)
 
 
 @main.command("schedule")
@@ -182,6 +214,9 @@ def create_schedule(
         lambda: {"count": 0, "min_gap": None, "last_sched": None, "sched": []}
     )
     for scheduled_task in current_schedule:
+        # if scheduled_task.date < start:
+        #     continue
+
         print(f"{scheduled_task.date_str}\t=>\t{scheduled_task.owner.name}")
         if simulate:
             owner_metrics = sim_data[scheduled_task.owner.name]
