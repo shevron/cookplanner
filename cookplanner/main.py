@@ -147,7 +147,7 @@ def update_names(
     _log.info("Existing schedule loaded with %d scheduled tasks", len(current_schedule))
 
     for task in current_schedule:
-        task.status = 'modified'
+        task.status = "modified"
 
     backend.save_schedule(current_schedule)
 
@@ -196,7 +196,11 @@ def create_schedule(
         randomize=config["schedule"].get("randomize_owners_list", False),
     )
     current_schedule = backend.get_scheduled_tasks(history_starts_at, end, owners)
-    _log.info("Existing schedule loaded with %d scheduled tasks", len(current_schedule))
+    _log.info(
+        "Existing schedule loaded starting from %s with %d scheduled tasks",
+        history_starts_at.strftime("%Y-%d-%h"),
+        len(current_schedule),
+    )
 
     schedulers = schedule.get_schedulers(
         owners, config["schedule"]["weekdays_to_schedule"]

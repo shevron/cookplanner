@@ -191,7 +191,9 @@ class GoogleCalendarBackend:
             "id": task_id,
             "summary": task.owner.name,
             "description": task.owner.name,
-            "extendedProperties": {"private": {"generator": "cookplanner", "owner_id": task.owner.id}},
+            "extendedProperties": {
+                "private": {"generator": "cookplanner", "owner_id": task.owner.id}
+            },
             "source": {
                 "title": "cookplanner",
                 "url": "https://github.com/shevron/cookplanner",

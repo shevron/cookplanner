@@ -50,17 +50,17 @@ class Schedule:
         return item in self._schedule
 
     def add(self, task: ScheduledTask) -> None:
-        self._total_tasks[task.owner.name] += 1
+        self._total_tasks[task.owner.id] += 1
         date = task.date.replace(hour=0, minute=0, second=0, microsecond=0)
-        if task.owner.name not in self._last_scheduled or (
-            self._last_scheduled[task.owner.name] < date
+        if task.owner.id not in self._last_scheduled or (
+            self._last_scheduled[task.owner.id] < date
         ):
-            self._last_scheduled[task.owner.name] = date
+            self._last_scheduled[task.owner.id] = date
 
-        if task.owner.name not in self._first_scheduled or (
-            self._first_scheduled[task.owner.name] > date
+        if task.owner.id not in self._first_scheduled or (
+            self._first_scheduled[task.owner.id] > date
         ):
-            self._first_scheduled[task.owner.name] = date
+            self._first_scheduled[task.owner.id] = date
 
         self._schedule[task.date_str] = task
 
@@ -69,20 +69,19 @@ class Schedule:
             date = date.strftime("%Y-%m-%d")
         return self._schedule.get(date)
 
-    def get_last_task_date(self, owner_name: str) -> Optional[datetime]:
-        return self._last_scheduled.get(owner_name)
+    def get_last_task_date(self, owner: TaskOwner) -> Optional[datetime]:
+        return self._last_scheduled.get(owner.id)
 
-    def get_total_tasks(self, owner_name: str) -> int:
-        return self._total_tasks.get(owner_name, 0)
+    def get_total_tasks(self, owner: TaskOwner) -> int:
+        return self._total_tasks.get(owner.id, 0)
 
     def get_nearest_task_date(
-        self, owner_name: str, date: datetime
+        self, owner: TaskOwner, date: datetime
     ) -> Optional[datetime]:
-        """Get date of scheduled task for given owner closest to given date
-        """
+        """Get date of scheduled task for given owner closest to given date"""
         if (
-            owner_name not in self._first_scheduled
-            or owner_name not in self._last_scheduled
+            owner.id not in self._first_scheduled
+            or owner.id not in self._last_scheduled
         ):
             return None
 
@@ -93,19 +92,19 @@ class Schedule:
             future_date = date + timedelta(days=distance)
 
             if (
-                past_date < self._first_scheduled[owner_name]
-                and future_date > self._last_scheduled[owner_name]
+                past_date < self._first_scheduled[owner.id]
+                and future_date > self._last_scheduled[owner.id]
             ):
                 return None
 
-            if past_date >= self._first_scheduled[owner_name]:
+            if past_date >= self._first_scheduled[owner.id]:
                 task = self._schedule.get(past_date.strftime("%Y-%m-%d"))
-                if task and task.owner.name == owner_name:
+                if task and task.owner.name == owner.id:
                     return past_date
 
-            if future_date <= self._last_scheduled[owner_name]:
+            if future_date <= self._last_scheduled[owner.id]:
                 task = self._schedule.get(future_date.strftime("%Y-%m-%d"))
-                if task and task.owner.name == owner_name:
+                if task and task.owner.name == owner.id:
                     return future_date
 
             distance += 1
@@ -217,7 +216,7 @@ class PreferredDayBasedScheduler(_IteratingScheduler):
         """Get iterator for owners that weren't scheduled for more than their MCS"""
         for owner in owners:
             owner_mts = self.global_mts / owner.weight
-            last_scheduled = schedule.get_last_task_date(owner.name)
+            last_scheduled = schedule.get_last_task_date(owner)
             if last_scheduled:
                 days_since = (date - last_scheduled).days
                 if days_since < owner_mts:
@@ -255,7 +254,7 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
 
     def _schedule_date(self, date: datetime, schedule: Schedule) -> bool:
         blocked_weekday = {
-            o.name
+            o.id
             for o in self.owners.values()
             if WEEKDAYS_REV[date.weekday()] in o.blocked_days
         }
@@ -269,9 +268,9 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
         past_ownerships = list(
             sorted(
                 (
-                    (self._get_total_past_tasks(o, schedule), o.name)
+                    (self._get_total_past_tasks(o, schedule), o.id)
                     for o in self.owners.values()
-                    if o.name not in blocked_weekday
+                    if o.id not in blocked_weekday
                 )
             )
         )
@@ -280,7 +279,10 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
 
         # Get owners with least number of past tasks scheduled
         for ownership in past_ownerships:
-            if ownership[0] <= least_scheduled_val + self.LEAST_SCHEDULED_GROUP_TOLERANCE:
+            if (
+                ownership[0]
+                <= least_scheduled_val + self.LEAST_SCHEDULED_GROUP_TOLERANCE
+            ):
                 least_scheduled.append(ownership[1])
 
         _log.debug(
@@ -298,14 +300,15 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
             )
             return False
 
-        # We have several owner with the same number. Find the one farthest from being scheduled again
+        # We have several owners with the same number of past schedulings.
+        # Find the one farthest from being scheduled again
         distances = list(
             sorted(
                 filter(
                     lambda d: d[0] >= self.MIN_SCHEDULE_DISTANCE,
                     (
-                        (self._get_scheduled_distance(date, o, schedule), o)
-                        for o in least_scheduled
+                        (self._get_scheduled_distance(date, self.owners[o_id], schedule), o_id)
+                        for o_id in least_scheduled
                     ),
                 ),
                 reverse=True,
@@ -319,24 +322,24 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
         self._update_schedule(schedule, owner, date)
         return True
 
+    @staticmethod
     def _get_scheduled_distance(
-        self, date: datetime, owner_name: str, schedule: Schedule
+        date: datetime, owner: TaskOwner, schedule: Schedule
     ) -> Union[int, float]:
-        nearest_task = schedule.get_nearest_task_date(owner_name, date)
+        nearest_task = schedule.get_nearest_task_date(owner, date)
         if nearest_task is None:
-            _log.warning(f"Looks like {owner_name} was never scheduled...")
+            _log.warning(f"Looks like {owner.name} was never scheduled...")
             return float("inf")  # infinity!
 
-        owner = self.owners[owner_name]
         distance = abs((date - nearest_task).days)
         _log.debug(
-            f"Days to nearest scheduled task for {owner_name} from {date}: {distance}"
+            f"Days to nearest scheduled task for {owner.name} from {date}: {distance}"
         )
         return math.ceil(distance / owner.weight)
 
     @staticmethod
     def _get_total_past_tasks(owner: TaskOwner, schedule: Schedule) -> int:
-        return math.floor(schedule.get_total_tasks(owner.name) / owner.weight)
+        return math.floor(schedule.get_total_tasks(owner) / owner.weight)
 
 
 class SomeoneRandom(_IteratingScheduler):
