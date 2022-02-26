@@ -1,7 +1,7 @@
 import logging
 from collections import Counter, defaultdict
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List, Tuple
 
 import click
 import dateutil.tz
@@ -43,12 +43,18 @@ def print_info(obj: Dict[str, Any]) -> None:
     owner_map = schedule.get_owner_map(obj["config"]["owners"])
     owners = schedule.get_preferred_days(owner_map.values())
     days = obj["config"]["schedule"]["weekdays_to_schedule"]
+
+    print("Task Owners:")
+    for owner_id, owner in owner_map.items():
+        print(f"  {owner_id}: {owner.name}{' [inactive]' if not owner.active else ''}")
+
+    print()
     print("Preferred weekdays:")
     for day in days:
         dc = owners.get(day, [])
         print(f"  {day}: {', '.join((c.name for c in dc))}")
-    print()
 
+    print()
     print(
         "Normal task cycle: ",
         schedule.get_normal_task_cycle(owner_map.values(), len(days)),
@@ -120,6 +126,46 @@ def set_owner(obj: Dict[str, Any], date: datetime, owner: str) -> None:
     backend.save_schedule(sched)
 
 
+@main.command("switch-owners")
+@click.argument("date1", type=click.DateTime(formats=["%Y-%m-%d"]), required=True)
+@click.argument("date2", type=click.DateTime(formats=["%Y-%m-%d"]), required=True)
+@click.confirmation_option(
+    prompt="Are you sure you want to manually switch owners for these dates?"
+)
+@click.pass_obj
+def switch_owners(obj: Dict[str, Any], date1: datetime, date2: datetime) -> None:
+    """Manually switch owners between two dates"""
+    config = obj["config"]
+    backend: GoogleCalendarBackend = obj["backend"]
+
+    owners = schedule.get_owner_map(config["owners"])
+    if date1 == date2:
+        raise click.ClickException(f"Given dates are the same: {date1} == {date2}")
+    elif date1 < date2:
+        current = backend.get_scheduled_tasks(date1, date2, owners=owners)
+    else:
+        current = backend.get_scheduled_tasks(date2, date1, owners=owners)
+
+    date1_current = current.get(date1)
+    date2_current = current.get(date2)
+
+    if date1_current is None or date2_current is None:
+        raise click.ClickException("One of the given dates has no task scheduled")
+
+    if date1_current.owner.id == date2_current.owner.id:
+        return
+
+    updated_schedule = schedule.create_schedule(
+        owners,
+        {
+            date1.strftime("%Y-%m-%d"): date2_current.owner.id,
+            date2.strftime("%Y-%m-%d"): date1_current.owner.id,
+        },
+        status="new"
+    )
+    backend.save_schedule(updated_schedule)
+
+
 @main.command("update-names")
 @click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("-s", "--start", default=None, type=click.DateTime(formats=["%Y-%m-%d"]))
@@ -156,6 +202,7 @@ def update_names(
 @click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("-s", "--start", default=None, type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("-h", "--history-starts-at", type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.option("-f", "--fixed-owner", type=(click.DateTime(formats=["%Y-%m-%d"]), str), multiple=True)
 @click.option("--simulate", is_flag=True, help="Simulation mode")
 @click.pass_obj
 def create_schedule(
@@ -163,6 +210,7 @@ def create_schedule(
     start: Optional[datetime],
     end: Optional[datetime],
     history_starts_at: Optional[datetime],
+    fixed_owner: Optional[List[Tuple[datetime, str]]],
     simulate: bool = False,
 ) -> None:
     """Create schedule"""
@@ -198,9 +246,13 @@ def create_schedule(
     current_schedule = backend.get_scheduled_tasks(history_starts_at, end, owners)
     _log.info(
         "Existing schedule loaded starting from %s with %d scheduled tasks",
-        history_starts_at.strftime("%Y-%d-%h"),
+        history_starts_at.strftime("%Y-%m-%d"),
         len(current_schedule),
     )
+
+    # Fix pre-set owners
+    for date, owner in fixed_owner:
+        schedule.set_owner(current_schedule, owners, date.replace(tzinfo=dateutil.tz.UTC), owner)
 
     schedulers = schedule.get_schedulers(
         owners, config["schedule"]["weekdays_to_schedule"]
@@ -223,6 +275,9 @@ def create_schedule(
 
         print(f"{scheduled_task.date_str}\t=>\t{scheduled_task.owner.name}")
         if simulate:
+            if not scheduled_task.owner.active:
+                continue
+
             owner_metrics = sim_data[scheduled_task.owner.name]
             owner_metrics["count"] += 1
             if owner_metrics["last_sched"]:

@@ -75,6 +75,7 @@ class GoogleCalendarBackend:
         """Get all scheduled tasks in a given date range"""
         if not end:
             end = datetime.now(tz=tz.UTC)
+        end = end.replace(hour=23, minute=59, second=59, microsecond=999999)
         events = (
             self._service.events()
             .list(

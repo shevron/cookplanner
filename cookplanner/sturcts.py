@@ -16,6 +16,7 @@ class TaskOwner:
     blocked_days: Set[str] = dataclasses.field(default_factory=set)
     weight: float = 1.0
     active: bool = True
+    start_counter_from: int = 0
 
     def __str__(self) -> str:
         return self.name
