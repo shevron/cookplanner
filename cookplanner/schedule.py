@@ -102,7 +102,7 @@ class Schedule:
                     past_date.strftime("%Y-%m-%d"),
                     self._first_scheduled[owner.id].strftime("%Y-%m-%d"),
                     future_date.strftime("%Y-%m-%d"),
-                    self._last_scheduled[owner.id].strftime("%Y-%m-%d")
+                    self._last_scheduled[owner.id].strftime("%Y-%m-%d"),
                 )
                 return None
 
@@ -316,7 +316,12 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
                 filter(
                     lambda d: d[0] >= self.MIN_SCHEDULE_DISTANCE,
                     (
-                        (self._get_scheduled_distance(date, self.owners[o_id], schedule), o_id)
+                        (
+                            self._get_scheduled_distance(
+                                date, self.owners[o_id], schedule
+                            ),
+                            o_id,
+                        )
                         for o_id in least_scheduled
                     ),
                 ),
@@ -348,7 +353,10 @@ class HistoricCooksCountScheduler(_IteratingScheduler):
 
     @staticmethod
     def _get_total_past_tasks(owner: TaskOwner, schedule: Schedule) -> int:
-        return math.floor(schedule.get_total_tasks(owner) / owner.weight) + owner.start_counter_from
+        return (
+            math.floor(schedule.get_total_tasks(owner) / owner.weight)
+            + owner.start_counter_from
+        )
 
 
 class SomeoneRandom(_IteratingScheduler):
@@ -386,21 +394,27 @@ def get_owner_map(
                 blocked_days=set(v.get("blocked_days", [])),
                 weight=v.get("weight", 1.0),
                 active=v.get("active", True),
-                start_counter_from=v.get("start_counter_from", 0)
+                start_counter_from=v.get("start_counter_from", 0),
             )
         )
     }
 
 
-def set_owner(schedule: Schedule, owners: Mapping[str, TaskOwner], date: datetime, owner_id: str) -> None:
+def set_owner(
+    schedule: Schedule, owners: Mapping[str, TaskOwner], date: datetime, owner_id: str
+) -> None:
     """Set owner for task date manually"""
     owner = owners[owner_id]
-    _log.debug("Manually setting owner for %s to %s", date.strftime("%Y-%m-%d"), owner.name)
-    schedule.add(ScheduledTask(
-        owner=owner,
-        date=date,
-        metadata={"scheduler": "manual"},
-    ))
+    _log.debug(
+        "Manually setting owner for %s to %s", date.strftime("%Y-%m-%d"), owner.name
+    )
+    schedule.add(
+        ScheduledTask(
+            owner=owner,
+            date=date,
+            metadata={"scheduler": "manual"},
+        )
+    )
 
 
 def get_schedulers(
@@ -414,7 +428,9 @@ def get_schedulers(
     return schedulers
 
 
-def get_preferred_days(owners: Iterable[TaskOwner], include_inactive: bool = False) -> Dict[str, List[TaskOwner]]:
+def get_preferred_days(
+    owners: Iterable[TaskOwner], include_inactive: bool = False
+) -> Dict[str, List[TaskOwner]]:
     """Get all owners by their preferred days"""
     days = defaultdict(list)
     for owner in owners:

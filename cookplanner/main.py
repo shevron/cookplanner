@@ -1,7 +1,7 @@
 import logging
 from collections import Counter, defaultdict
 from datetime import datetime
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import dateutil.tz
@@ -161,7 +161,7 @@ def switch_owners(obj: Dict[str, Any], date1: datetime, date2: datetime) -> None
             date1.strftime("%Y-%m-%d"): date2_current.owner.id,
             date2.strftime("%Y-%m-%d"): date1_current.owner.id,
         },
-        status="new"
+        status="new",
     )
     backend.save_schedule(updated_schedule)
 
@@ -202,7 +202,12 @@ def update_names(
 @click.option("-e", "--end", type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("-s", "--start", default=None, type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("-h", "--history-starts-at", type=click.DateTime(formats=["%Y-%m-%d"]))
-@click.option("-f", "--fixed-owner", type=(click.DateTime(formats=["%Y-%m-%d"]), str), multiple=True)
+@click.option(
+    "-f",
+    "--fixed-owner",
+    type=(click.DateTime(formats=["%Y-%m-%d"]), str),
+    multiple=True,
+)
 @click.option("--simulate", is_flag=True, help="Simulation mode")
 @click.pass_obj
 def create_schedule(
@@ -252,7 +257,9 @@ def create_schedule(
 
     # Fix pre-set owners
     for date, owner in fixed_owner:
-        schedule.set_owner(current_schedule, owners, date.replace(tzinfo=dateutil.tz.UTC), owner)
+        schedule.set_owner(
+            current_schedule, owners, date.replace(tzinfo=dateutil.tz.UTC), owner
+        )
 
     schedulers = schedule.get_schedulers(
         owners, config["schedule"]["weekdays_to_schedule"]
