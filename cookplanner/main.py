@@ -92,7 +92,8 @@ def get_tasks(obj: Dict[str, Any], start: datetime, end: Optional[datetime]) -> 
     """List current scheduled tasks"""
     backend: GoogleCalendarBackend = obj["backend"]
     history = backend.get_scheduled_tasks(start, end)
-    print(history)
+    for task in history:
+        print(f"{task.date_str}\t->\t{task.owner.name}")
 
 
 @main.command("clear-tasks")
