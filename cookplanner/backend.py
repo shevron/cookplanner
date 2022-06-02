@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Iterable, Mapping, Optional
 
 from dateutil import tz
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -53,18 +54,24 @@ class GoogleCalendarBackend:
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except RefreshError:
+                    creds = self._login()
             else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self._client_secret_file, self.SCOPES
-                )
-                creds = flow.run_local_server(port=0)
+                creds = self._login()
             # Save the credentials for the next run
             with open(self._token_file_path, "w") as token:
                 token.write(creds.to_json())
 
         self._creds = creds
         return creds
+
+    def _login(self):
+        flow = InstalledAppFlow.from_client_secrets_file(
+            self._client_secret_file, self.SCOPES
+        )
+        return flow.run_local_server(port=0)
 
     def get_scheduled_tasks(
         self,
